@@ -8,6 +8,8 @@ Architecture:
 
 from __future__ import annotations
 
+import os
+
 from legal_ai_platform.agents.research.research_agent import ResearchAgent
 from legal_ai_platform.config import PlatformSettings, get_settings
 from legal_ai_platform.mcp.retrieval_client import RetrievalMCPClient
@@ -24,6 +26,7 @@ class PlatformContainer:
         # .env is loaded at package import (see legal_ai_platform/__init__.py)
         # so LLM credentials reach model_config before models are constructed.
         self.settings = settings or get_settings()
+        os.environ.setdefault("RETRIEVAL_SERVER_URL", self.settings.retrieval_server_url)
         self.hooks = HookRegistry()
         self.retrieval_client = RetrievalMCPClient(
             base_url=self.settings.retrieval_server_url,
@@ -51,9 +54,6 @@ class PlatformContainer:
 
     async def shutdown(self) -> None:
         """Clean up resources on application shutdown."""
-        research = self.registry.get("research")
-        if isinstance(research, ResearchAgent):
-            research.teardown()
         await self.retrieval_client.close()
 
 

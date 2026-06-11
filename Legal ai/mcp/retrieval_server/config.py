@@ -64,6 +64,13 @@ class Settings(BaseSettings):
         default=0.5,
         alias="SEMANTIC_HYBRID_ALPHA",
     )
+    # Root for the long-term legal memory (MEMORY.md + linked files). Must match
+    # the research agent's DEEP_RESEARCH_MEMORY_DIR so both processes share one
+    # memory store (they run on the same host).
+    memory_dir: str = Field(
+        default="memory",
+        alias="DEEP_RESEARCH_MEMORY_DIR",
+    )
 
 
 @lru_cache

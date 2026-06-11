@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 import uuid
 from typing import Any
@@ -12,13 +11,8 @@ from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from deep_research_from_scratch.research_agent_full import deep_researcher_builder
-from deep_research_from_scratch.search_tools import (
-    clear_retrieval_provider,
-    set_retrieval_provider,
-)
 
 from legal_ai_platform.agents.base.base_agent import BaseAgent
-from legal_ai_platform.agents.research.retrieval_bridge import make_sync_search_provider
 from legal_ai_platform.mcp.retrieval_client import RetrievalMCPClient
 from legal_ai_platform.models.agent import AgentRequest, AgentResponse
 from legal_ai_platform.models.research import ResearchRequest, ResearchResponse
@@ -29,8 +23,8 @@ from legal_ai_platform.observability.hooks import HookRegistry
 class ResearchAgent(BaseAgent):
     """Legal research agent backed by the LangGraph multi-agent pipeline.
 
-    All retrieval is delegated to the injected ``RetrievalMCPClient`` via the
-    ``search_tools`` injection seam — this agent never performs direct search.
+    All retrieval is performed by ``web_search`` in the deep-research package,
+    which calls the Legal ai retrieval MCP server directly via ``RETRIEVAL_SERVER_URL``.
 
     The graph is compiled with a checkpointer so a ``thread_id`` continues a
     multi-turn exchange (e.g. answering a clarification question over the API).
@@ -47,22 +41,13 @@ class ResearchAgent(BaseAgent):
     ) -> None:
         super().__init__(hooks=hooks)
         self._retrieval_client = retrieval_client
-        self._provider_registered = False
         self._timeout_seconds = timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
         # Compile our own instance with a checkpointer for session continuity,
         # without mutating the package's module-level compiled graph.
         self._graph = deep_researcher_builder.compile(checkpointer=MemorySaver())
 
-    def _ensure_retrieval_provider(self) -> None:
-        """Register the MCP-backed search provider with search_tools."""
-        if not self._provider_registered:
-            set_retrieval_provider(make_sync_search_provider(self._retrieval_client))
-            os.environ.setdefault("LEGAL_SEARCH_BACKEND", "custom")
-            self._provider_registered = True
-
     async def execute(self, request: AgentRequest) -> AgentResponse:
         """Run the full research pipeline for the given query."""
-        self._ensure_retrieval_provider()
         thread_id = request.thread_id or str(uuid.uuid4())
         research_request = ResearchRequest(
             query=request.query,
@@ -164,7 +149,6 @@ class ResearchAgent(BaseAgent):
                 return content
         return ""
 
-    def teardown(self) -> None:
-        """Clear the retrieval provider on shutdown."""
-        clear_retrieval_provider()
-        self._provider_registered = False
+    async def check_retrieval_health(self) -> dict[str, Any]:
+        """Check that the Legal ai retrieval MCP server is reachable."""
+        return await self._retrieval_client.health()

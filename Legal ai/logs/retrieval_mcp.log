@@ -11256,3 +11256,55 @@ json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
 2026-06-10T12:26:11.475107Z INFO mcp.retrieval_server.search_service dedupe complete raw=10 unique=10 request_id=908ca357165d
 2026-06-10T12:26:11.475107Z INFO mcp.retrieval_server.search_service ranking complete returned=10 request_id=908ca357165d
 2026-06-10T12:26:11.475107Z INFO mcp.retrieval_server.main request completed tool=search returned=10 duration_ms=4313 degraded=False request_id=908ca357165d
+2026-06-11T11:44:29.814522Z INFO mcp.retrieval_server.main request received tool=search query=Section 420 IPC bailable India search_type=all jurisdiction=India max_results=3 tenant_id=None filters=None request_id=e55e77d894df
+2026-06-11T11:44:29.817526Z INFO mcp.retrieval_server.search_service fan-out started sources=['web'] request_id=e55e77d894df
+2026-06-11T11:44:29.818523Z INFO mcp.retrieval_server.search_service searching web request_id=e55e77d894df query=Section 420 IPC bailable India max_results=3
+2026-06-11T11:44:29.819524Z INFO mcp.retrieval_server.integrations.web_search calling search backend request_id=e55e77d894df source=duckduckgo query=Section 420 IPC bailable India limit=3
+2026-06-11T11:44:30.370990Z INFO primp response: https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=Section%20420%20IPC%20bailable%20India 200
+2026-06-11T11:44:30.782281Z INFO primp response: https://grokipedia.com/api/typeahead?query=Section+420+IPC+bailable+India&limit=1 200
+2026-06-11T11:44:32.301953Z INFO primp response: https://search.brave.com/search?q=Section+420+IPC+bailable+India&source=web 200
+2026-06-11T11:44:32.362686Z INFO mcp.retrieval_server.integrations.web_search search backend responded request_id=e55e77d894df source=duckduckgo count=3 duration_ms=2543
+2026-06-11T11:44:32.363700Z INFO mcp.retrieval_server.search_service web search mapped request_id=e55e77d894df count=3 degraded=False
+2026-06-11T11:44:32.363700Z INFO mcp.retrieval_server.search_service source returned results source=web count=3 duration_ms=2545 request_id=e55e77d894df
+2026-06-11T11:44:32.363700Z INFO mcp.retrieval_server.search_service dedupe complete raw=3 unique=3 request_id=e55e77d894df
+2026-06-11T11:44:32.363700Z INFO mcp.retrieval_server.search_service ranking complete returned=3 request_id=e55e77d894df
+2026-06-11T11:44:32.364692Z INFO mcp.retrieval_server.main request completed tool=search returned=3 duration_ms=2551 degraded=False request_id=e55e77d894df
+2026-06-11T12:31:55.642471Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=30.0
+2026-06-11T12:31:56.513838Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None
+2026-06-11T12:31:56.517589Z INFO mcp.retrieval_server.main request received tool=memory_save title=Client Objectives request_id=25099d252216
+2026-06-11T12:31:56.542541Z INFO mcp.retrieval_server.memory_service memory saved request_id=25099d252216 filename=client_objectives.md memory_dir=C:\Users\miniOrange\AppData\Local\Temp\pytest-of-miniOrange\pytest-9\test_memory_save_indexes_file0\auto
+2026-06-11T12:31:56.542541Z INFO mcp.retrieval_server.main request completed tool=memory_save filename=client_objectives.md duration_ms=23 request_id=25099d252216
+2026-06-11T12:31:56.545278Z INFO httpx HTTP Request: POST http://testserver/tools/memory/save "HTTP/1.1 200 OK"
+2026-06-11T12:31:56.551014Z INFO mcp.retrieval_server.main shutting down service=retrieval-mcp
+2026-06-11T12:31:56.563221Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=30.0
+2026-06-11T12:31:57.305472Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None
+2026-06-11T12:31:57.313503Z INFO mcp.retrieval_server.main request received tool=memory_save title=Limitation Period request_id=e764bdbe1ec4
+2026-06-11T12:31:57.315589Z INFO mcp.retrieval_server.memory_service memory saved request_id=e764bdbe1ec4 filename=limitation_period.md memory_dir=C:\Users\miniOrange\AppData\Local\Temp\pytest-of-miniOrange\pytest-9\test_memory_search_finds_saved0\auto
+2026-06-11T12:31:57.315589Z INFO mcp.retrieval_server.main request completed tool=memory_save filename=limitation_period.md duration_ms=5 request_id=e764bdbe1ec4
+2026-06-11T12:31:57.320265Z INFO httpx HTTP Request: POST http://testserver/tools/memory/save "HTTP/1.1 200 OK"
+2026-06-11T12:31:57.321297Z INFO mcp.retrieval_server.main request received tool=memory_search query=limitation request_id=050a7cab77d0
+2026-06-11T12:31:57.355537Z INFO mcp.retrieval_server.memory_service memory searched request_id=050a7cab77d0 matches=1 memory_dir=C:\Users\miniOrange\AppData\Local\Temp\pytest-of-miniOrange\pytest-9\test_memory_search_finds_saved0\auto
+2026-06-11T12:31:57.355537Z INFO mcp.retrieval_server.main request completed tool=memory_search returned=1 duration_ms=37 request_id=050a7cab77d0
+2026-06-11T12:31:57.355537Z INFO httpx HTTP Request: POST http://testserver/tools/memory/search "HTTP/1.1 200 OK"
+2026-06-11T12:31:57.365113Z INFO mcp.retrieval_server.main shutting down service=retrieval-mcp
+2026-06-11T12:31:57.381623Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=30.0
+2026-06-11T12:31:58.110380Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None
+2026-06-11T12:31:58.118592Z INFO mcp.retrieval_server.main request received tool=memory_search query=nonexistent request_id=a5deb397325f
+2026-06-11T12:31:58.123004Z INFO mcp.retrieval_server.memory_service memory searched request_id=a5deb397325f matches=0 memory_dir=C:\Users\miniOrange\AppData\Local\Temp\pytest-of-miniOrange\pytest-9\test_memory_search_empty_when_0\auto
+2026-06-11T12:31:58.123004Z INFO mcp.retrieval_server.main request completed tool=memory_search returned=0 duration_ms=3 request_id=a5deb397325f
+2026-06-11T12:31:58.123004Z INFO httpx HTTP Request: POST http://testserver/tools/memory/search "HTTP/1.1 200 OK"
+2026-06-11T12:31:58.125548Z INFO mcp.retrieval_server.main shutting down service=retrieval-mcp
+2026-06-11T12:32:53.881537Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=30.0
+2026-06-11T12:32:54.218928Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None
+2026-06-11T12:33:21.537505Z INFO mcp.retrieval_server.main request received tool=memory_save title=BNS Murder Section request_id=feb7283c394e
+2026-06-11T12:33:21.545083Z INFO mcp.retrieval_server.memory_service memory saved request_id=feb7283c394e filename=bns_murder_section.md memory_dir=C:\Users\miniOrange\Projects\Ai Project\Legal_AI_FULL\memory_verify\auto
+2026-06-11T12:33:21.545083Z INFO mcp.retrieval_server.main request completed tool=memory_save filename=bns_murder_section.md duration_ms=9 request_id=feb7283c394e
+2026-06-11T12:33:21.796410Z INFO mcp.retrieval_server.main request received tool=memory_search query=murder BNS request_id=7ae190d5dc8a
+2026-06-11T12:33:21.845449Z INFO mcp.retrieval_server.memory_service memory searched request_id=7ae190d5dc8a matches=1 memory_dir=C:\Users\miniOrange\Projects\Ai Project\Legal_AI_FULL\memory_verify\auto
+2026-06-11T12:33:21.845449Z INFO mcp.retrieval_server.main request completed tool=memory_search returned=1 duration_ms=49 request_id=7ae190d5dc8a
+2026-06-11T12:33:22.155994Z INFO mcp.retrieval_server.main request received tool=memory_search query=zzz nonexistent request_id=62bab84eee4a
+2026-06-11T12:33:22.155994Z INFO mcp.retrieval_server.memory_service memory searched request_id=62bab84eee4a matches=0 memory_dir=C:\Users\miniOrange\Projects\Ai Project\Legal_AI_FULL\memory_verify\auto
+2026-06-11T12:33:22.164261Z INFO mcp.retrieval_server.main request completed tool=memory_search returned=0 duration_ms=5 request_id=62bab84eee4a
+2026-06-11T13:13:44.769370Z INFO mcp.retrieval_server.main shutting down service=retrieval-mcp
+2026-06-11T13:13:57.698944Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=30.0
+2026-06-11T13:13:57.989877Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None

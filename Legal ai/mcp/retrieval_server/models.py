@@ -143,6 +143,35 @@ class CitationGraphResponse(BaseModel):
     graph_time_ms: int
 
 
+class MemorySaveRequest(BaseModel):
+    title: str
+    content: str
+    hook: str = ""
+
+
+class MemorySaveResponse(BaseModel):
+    request_id: str
+    filename: str
+    indexed: bool
+    message: str
+
+
+class MemorySearchRequest(BaseModel):
+    query: str
+
+
+class MemoryMatch(BaseModel):
+    name: str
+    content: str
+
+
+class MemorySearchResponse(BaseModel):
+    request_id: str
+    query: str
+    results: list[MemoryMatch]
+    total_results: int
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str

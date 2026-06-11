@@ -22,6 +22,7 @@ from mcp.retrieval_server.logging_setup import (
     get_logger,
     truncate,
 )
+from mcp.retrieval_server.memory_service import MemoryService
 from mcp.retrieval_server.models import (
     CitationGraphRequest,
     CitationGraphResponse,
@@ -30,6 +31,10 @@ from mcp.retrieval_server.models import (
     HealthResponse,
     IngestInternalRequest,
     IngestInternalResponse,
+    MemorySaveRequest,
+    MemorySaveResponse,
+    MemorySearchRequest,
+    MemorySearchResponse,
     SearchRequest,
     SearchResponse,
     SemanticSearchRequest,
@@ -66,6 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.semantic_service = SemanticSearchService(settings)
     app.state.citation_service = CitationService(settings, http_client)
     app.state.ingest_service = IngestService(settings)
+    app.state.memory_service = MemoryService(settings)
 
     yield
 
@@ -352,6 +358,94 @@ async def ingest_internal_tool(
         logger.error(
             "request failed",
             tool="ingest_internal",
+            error=type(exc).__name__,
+            message=str(exc),
+            duration_ms=duration_ms,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+    finally:
+        clear_request_context()
+
+
+@app.post("/tools/memory/save", response_model=MemorySaveResponse)
+async def memory_save_tool(
+    request: Request, body: MemorySaveRequest
+) -> MemorySaveResponse:
+    """Persist a durable, verified legal fact to long-term memory."""
+    request_id = _new_request_id()
+    bind_request(request_id)
+    start = time.perf_counter()
+
+    logger.info(
+        "request received",
+        tool="memory_save",
+        title=truncate(body.title, 100),
+    )
+
+    try:
+        service: MemoryService = request.app.state.memory_service
+        response = service.save(body.title, body.content, body.hook, request_id)
+
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        logger.info(
+            "request completed",
+            tool="memory_save",
+            filename=response.filename,
+            duration_ms=duration_ms,
+        )
+        return response
+
+    except Exception as exc:
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        logger.error(
+            "request failed",
+            tool="memory_save",
+            error=type(exc).__name__,
+            message=str(exc),
+            duration_ms=duration_ms,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+    finally:
+        clear_request_context()
+
+
+@app.post("/tools/memory/search", response_model=MemorySearchResponse)
+async def memory_search_tool(
+    request: Request, body: MemorySearchRequest
+) -> MemorySearchResponse:
+    """Search long-term memory for relevant saved legal facts."""
+    request_id = _new_request_id()
+    bind_request(request_id)
+    start = time.perf_counter()
+
+    logger.info(
+        "request received",
+        tool="memory_search",
+        query=truncate(body.query, 200),
+    )
+
+    try:
+        service: MemoryService = request.app.state.memory_service
+        response = service.search(body.query, request_id)
+
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        logger.info(
+            "request completed",
+            tool="memory_search",
+            returned=response.total_results,
+            duration_ms=duration_ms,
+        )
+        return response
+
+    except Exception as exc:
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        logger.error(
+            "request failed",
+            tool="memory_search",
             error=type(exc).__name__,
             message=str(exc),
             duration_ms=duration_ms,
