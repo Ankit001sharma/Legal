@@ -61,3 +61,23 @@ class Failure(ObservabilityEvent):
     operation: str = ""
     error: str = ""
     recoverable: bool = False
+
+
+class ResearchModeSelected(ObservabilityEvent):
+    """Emitted when a research mode is selected for a query (analytics telemetry)."""
+
+    event_type: Literal["research_mode_selected"] = "research_mode_selected"
+    mode: str = ""
+    query_length: int = 0
+
+
+class ResearchCompleted(ObservabilityEvent):
+    """Emitted when a research run finishes, capturing key analytics dimensions."""
+
+    event_type: Literal["research_completed"] = "research_completed"
+    mode: str = ""
+    retrieval_rounds: int = 0
+    citations_found: int = 0
+    output_length: int = 0
+    latency_ms: float = 0.0
+    token_estimate: int = 0

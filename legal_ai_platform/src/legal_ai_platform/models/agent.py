@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from legal_ai_platform.models.research import ResearchMode
+
 
 class AgentRequest(BaseModel):
     """Generic task envelope sent to any agent via the orchestrator."""
@@ -14,6 +16,10 @@ class AgentRequest(BaseModel):
     task_type: str | None = Field(
         default=None,
         description="Optional explicit task type; if omitted the classifier decides",
+    )
+    mode: ResearchMode = Field(
+        default=ResearchMode.NORMAL,
+        description="Research depth mode: 'normal' (fast, default) or 'deep' (exhaustive memo)",
     )
     context: dict[str, Any] = Field(default_factory=dict)
     tenant_id: str | None = None

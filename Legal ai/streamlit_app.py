@@ -16,6 +16,15 @@ DEFAULT_PLATFORM_URL = "http://localhost:8080"
 TIMEOUT_SECONDS = int(os.environ.get("STREAMLIT_QUERY_TIMEOUT", "900"))
 WAIT_MESSAGE = "Researching… this can take a few minutes."
 
+RESEARCH_MODES = {
+    "Normal Research": "normal",
+    "Deep Research": "deep",
+}
+RESEARCH_MODE_DESCRIPTIONS = {
+    "Normal Research": "Fast legal answer · 2-3 retrieval rounds · concise response",
+    "Deep Research": "Exhaustive legal memo · full authority discovery · long-form output",
+}
+
 st.set_page_config(
     page_title="Legal AI Research",
     page_icon="⚖️",
@@ -62,6 +71,7 @@ def _init_state() -> None:
     st.session_state.setdefault("suggested_followups", [])
     st.session_state.setdefault("pending_followup", None)
     st.session_state.setdefault("research_directions", [])
+    st.session_state.setdefault("research_mode", "Normal Research")
 
 
 def _reset_chat() -> None:
@@ -71,6 +81,7 @@ def _reset_chat() -> None:
     st.session_state["suggested_followups"] = []
     st.session_state["pending_followup"] = None
     st.session_state["research_directions"] = []
+    # Preserve the selected research mode across new chats
 
 
 # ── Follow-up question parsing ────────────────────────────────────────────────
@@ -98,10 +109,13 @@ def _parse_followup_questions(text: str) -> list[str]:
 # ── Query execution ───────────────────────────────────────────────────────────
 
 def _run_query(platform_url: str, prompt: str) -> None:
+    selected_label = st.session_state.get("research_mode", "Normal Research")
+    mode_value = RESEARCH_MODES.get(selected_label, "normal")
     body: dict[str, Any] = {
         "query": prompt,
         "task_type": "research",
         "max_results": 10,
+        "mode": mode_value,
     }
     if st.session_state.get("thread_id"):
         body["thread_id"] = st.session_state["thread_id"]
@@ -226,6 +240,13 @@ def _render_assistant_extras(message: dict[str, Any]) -> None:
         bits.append(f"**agent:** {meta['agent']}")
     if meta.get("task_type"):
         bits.append(f"**task_type:** {meta['task_type']}")
+    # Show the mode that was used for this particular response
+    artifacts = meta.get("artifacts") or {}
+    mode_used = artifacts.get("mode") or (artifacts.get("research") or {}).get("mode")
+    if not mode_used and meta.get("artifacts"):
+        mode_used = meta["artifacts"].get("mode")
+    if mode_used:
+        bits.append(f"**mode:** {mode_used}")
     if bits:
         st.caption(" · ".join(bits))
     if meta.get("artifacts"):
@@ -242,6 +263,22 @@ _init_state()
 
 with st.sidebar:
     st.header("⚖️ Legal AI Research")
+
+    # ── Research mode selector ────────────────────────────────────────────────
+    st.markdown("**Research Mode**")
+    selected_mode = st.radio(
+        label="Research Mode",
+        options=list(RESEARCH_MODES.keys()),
+        index=list(RESEARCH_MODES.keys()).index(
+            st.session_state.get("research_mode", "Normal Research")
+        ),
+        key="research_mode_radio",
+        label_visibility="collapsed",
+    )
+    st.session_state["research_mode"] = selected_mode
+    st.caption(RESEARCH_MODE_DESCRIPTIONS.get(selected_mode, ""))
+    st.divider()
+
     platform_url = st.text_input(
         "Platform gateway URL",
         value=DEFAULT_PLATFORM_URL,
@@ -312,6 +349,14 @@ with st.sidebar:
     )
 
 st.title("Legal Research Assistant")
+
+# Show active research mode as a status badge below the title
+_active_mode = st.session_state.get("research_mode", "Normal Research")
+_mode_icon = "⚡" if _active_mode == "Normal Research" else "🔬"
+st.markdown(
+    f"{_mode_icon} **Active mode:** {_active_mode} — "
+    f"{RESEARCH_MODE_DESCRIPTIONS.get(_active_mode, '')}"
+)
 
 if not st.session_state["messages"]:
     st.caption(

@@ -6,6 +6,8 @@ from legal_ai_platform.observability.events import (
     Latency,
     ObservabilityEvent,
     QueryReceived,
+    ResearchCompleted,
+    ResearchModeSelected,
     ToolCalled,
 )
 from legal_ai_platform.observability.hooks import HookRegistry, LoggingHook, ObservabilityHook
@@ -19,5 +21,7 @@ __all__ = [
     "ObservabilityEvent",
     "ObservabilityHook",
     "QueryReceived",
+    "ResearchCompleted",
+    "ResearchModeSelected",
     "ToolCalled",
 ]

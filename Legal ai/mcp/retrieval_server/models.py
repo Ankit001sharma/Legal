@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 SearchType = Literal["web", "internal", "all"]
 SourceType = Literal["web", "internal"]
 CitationDirection = Literal["incoming", "outgoing", "both"]
+SearchDepth = Literal["normal", "deep"]
 
 
 class SearchRequest(BaseModel):
@@ -19,6 +20,7 @@ class SearchRequest(BaseModel):
     max_results: int = Field(default=10, ge=1, le=100)
     tenant_id: str | None = None
     filters: dict[str, Any] | None = None
+    search_depth: SearchDepth = "normal"
 
 
 class SearchResult(BaseModel):
