@@ -33,6 +33,9 @@ class SearchService:
         self._legal_authority = LegalAuthoritySearchClient(
             call_timeout=settings.legal_authority_call_timeout,
             global_timeout=settings.legal_authority_global_timeout,
+            tavily_api_key=getattr(settings, "tavily_api_key", "") or "",
+            indiankanoon_api_key=getattr(settings, "indiankanoon_api_key", "") or "",
+            http_client=http_client,
         )
 
     async def search(self, request: SearchRequest, request_id: str) -> SearchResponse:

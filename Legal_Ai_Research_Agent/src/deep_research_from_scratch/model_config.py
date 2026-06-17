@@ -144,13 +144,14 @@ def fit_writer_prompt(
     findings: str,
     trim_findings: Callable[[str, int], str],
     requested_max_tokens: int | None = None,
+    min_completion_tokens: int | None = None,
 ) -> tuple[str, int | None]:
     """Shrink findings until the writer has room for a full memorandum.
 
     Prevents ``cap_max_tokens_for_prompt`` from collapsing completion to a
     handful of tokens when findings + template exceed the context window.
     """
-    min_completion = _min_writer_completion_tokens()
+    min_completion = min_completion_tokens or _min_writer_completion_tokens()
     char_budget = len(findings)
     floor = min(4000, char_budget)
 

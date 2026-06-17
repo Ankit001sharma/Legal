@@ -51,7 +51,7 @@ from typing_extensions import Literal
 
 import asyncio
 
-writer_model = get_chat_model("writer", max_tokens=32000)
+writer_model = get_chat_model("writer", max_tokens=app_config.DEEP_WRITER_MAX_TOKENS)
 
 # ===== FINAL REPORT GENERATION =====
 
@@ -98,11 +98,11 @@ def route_after_bootstrap(
     state: AgentState,
 ) -> Literal["supervisor_subgraph", "final_report_generation"]:
     """Skip the LLM supervisor when fast mode has enough fetched primary sources."""
-    if not app_config.FAST_RESEARCH_MODE:
+    if not app_config.DEEP_FAST_RESEARCH_MODE:
         return "supervisor_subgraph"
     sources = _collect_sources(state)
     _, primary_fetches = count_fetches(sources)
-    if primary_fetches >= app_config.FAST_MODE_MIN_FETCHES:
+    if primary_fetches >= app_config.DEEP_BOOTSTRAP_MIN_TARGET_FETCHES:
         return "final_report_generation"
     return "supervisor_subgraph"
 
@@ -119,9 +119,9 @@ async def _invoke_writer(
     """Call the writer LLM with 429 backoff and a lighter fallback pass."""
     # (findings_char_budget, max_tokens, cooldown_seconds, max_retries)
     attempts: list[tuple[int, int | None, float, int]] = [
-        (app_config.LLM_FINDINGS_CHAR_BUDGET, safe_max_tokens, 0.0, 8),
-        (12_000, 2048, 20.0, 5),
-        (8_000, 1536, 35.0, 4),
+        (app_config.DEEP_LLM_FINDINGS_CHAR_BUDGET, safe_max_tokens, 0.0, 8),
+        (40_000, safe_max_tokens, 20.0, 5),
+        (24_000, 4096, 35.0, 4),
     ]
     last_exc: Exception | None = None
 
@@ -173,7 +173,7 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
         findings_text = build_verification_corpus(
             [], state.get("raw_notes", []), sources
         )
-    findings = _trim_findings(findings_text, app_config.LLM_FINDINGS_CHAR_BUDGET)
+    findings = _trim_findings(findings_text, app_config.DEEP_LLM_FINDINGS_CHAR_BUDGET)
     source_registry = format_writer_source_registry(sources)
     case_digest = build_case_digest(sources)
 
@@ -197,7 +197,8 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
         final_report_prompt,
         findings=findings,
         trim_findings=_trim_findings,
-        requested_max_tokens=32000,
+        requested_max_tokens=app_config.DEEP_WRITER_MAX_TOKENS,
+        min_completion_tokens=app_config.DEEP_MIN_WRITER_COMPLETION_TOKENS,
     )
 
     try:

@@ -31,7 +31,9 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
-from mcp.retrieval_server.integrations.web_search import _duckduckgo_search_sync
+import httpx
+
+from mcp.retrieval_server.integrations.web_search import _duckduckgo_search_sync, tavily_search
 from mcp.retrieval_server.logging_setup import get_logger, truncate
 
 logger = get_logger(__name__)
@@ -110,6 +112,76 @@ def _normalize_hit(
     }
 
 
+async def _indiankanoon_api_search(
+    query: str,
+    api_key: str,
+    max_results: int,
+    http_client: httpx.AsyncClient | None = None,
+    timeout: float = 15.0,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Search IndianKanoon via its official API.
+
+    Returns (results, degraded). Requires INDIANKANOON_API_KEY.
+    API docs: https://api.indiankanoon.org/
+    """
+    if not api_key:
+        return [], True
+
+    payload = {"formInput": query, "pagenum": 0}
+    headers = {
+        "Authorization": f"Token {api_key}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    try:
+        client = http_client or httpx.AsyncClient()
+        own_client = http_client is None
+        try:
+            response = await asyncio.wait_for(
+                client.post(
+                    "https://api.indiankanoon.org/search/",
+                    data=payload,
+                    headers=headers,
+                    timeout=timeout,
+                ),
+                timeout=timeout + 5,
+            )
+            response.raise_for_status()
+        finally:
+            if own_client:
+                await client.aclose()
+
+        data = response.json()
+        results: list[dict[str, Any]] = []
+        for item in data.get("docs", []):
+            doc_id = str(item.get("tid") or "")
+            url = f"https://indiankanoon.org/doc/{doc_id}/" if doc_id else ""
+            if not url:
+                continue
+            citation = item.get("citation", "")
+            results.append({
+                "url": url,
+                "title": item.get("title", "Untitled"),
+                "snippet": item.get("headline", ""),
+                "score": 0.95,
+                "engine": "indiankanoon",
+                "metadata": {
+                    "backend": "indiankanoon",
+                    "citation": citation,
+                    "authority_tier": "primary",
+                },
+            })
+            if len(results) >= max_results:
+                break
+
+        logger.info("indiankanoon api search succeeded", query=truncate(query, 120), count=len(results))
+        return results, False
+
+    except Exception as exc:
+        logger.warning("indiankanoon api search failed", error=type(exc).__name__, message=str(exc))
+        return [], True
+
+
 class LegalAuthoritySearchClient:
     """Find Indian legal primary sources using site-restricted web search.
 
@@ -121,17 +193,28 @@ class LegalAuthoritySearchClient:
     global_timeout:
         Hard wall-clock budget for the entire ``search()`` call (seconds).
         We return whatever we have collected when this fires.
+    tavily_api_key:
+        Optional Tavily API key. When set, Tavily is used as the primary search
+        backend for all tier-0 domains (much more reliable than DuckDuckGo site:).
+    indiankanoon_api_key:
+        Optional IndianKanoon API key. When set, direct API calls supplement the
+        web search for Indian case law.
     """
 
     def __init__(
         self,
         call_timeout: float = 8.0,
         global_timeout: float = 18.0,
-        # Legacy kwarg kept for call-sites that still pass `timeout=`.
         timeout: float | None = None,
+        tavily_api_key: str = "",
+        indiankanoon_api_key: str = "",
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._call_timeout = timeout if timeout is not None else call_timeout
         self._global_timeout = global_timeout
+        self._tavily_api_key = tavily_api_key
+        self._indiankanoon_api_key = indiankanoon_api_key
+        self._http_client = http_client
 
     async def _search_domain(
         self,
@@ -222,8 +305,54 @@ class LegalAuthoritySearchClient:
     ) -> tuple[list[dict[str, Any]], bool]:
         """Inner search logic (no global timeout wrapper here)."""
         per_domain = max(3, (max_results + len(_TIER0_DOMAINS) - 1) // len(_TIER0_DOMAINS))
+        merged: dict[str, dict[str, Any]] = {}
+        degraded = False
 
-        # ── Tier-0: always run (3 domains × 2 expansions = 6 tasks) ──────────
+        # ── IndianKanoon API (primary — when key is set, runs first) ──────────
+        if self._indiankanoon_api_key:
+            ik_results, ik_degraded = await _indiankanoon_api_search(
+                query,
+                api_key=self._indiankanoon_api_key,
+                max_results=max_results,
+                http_client=self._http_client,
+                timeout=self._call_timeout,
+            )
+            degraded = degraded or ik_degraded
+            for hit in ik_results:
+                merged[hit["url"]] = hit
+            logger.info(
+                "indiankanoon api complete",
+                request_id=request_id,
+                unique_hits=len(merged),
+            )
+
+        # ── Tavily (use instead of DuckDuckGo when key is set) ────────────────
+        if self._tavily_api_key:
+            # Run Tavily for all three core domains in parallel
+            tavily_tasks = [
+                tavily_search(
+                    f"site:{domain} {query}",
+                    api_key=self._tavily_api_key,
+                    max_results=per_domain,
+                    http_client=self._http_client,
+                    timeout=self._call_timeout,
+                )
+                for domain, _backend in _TIER0_DOMAINS
+            ]
+            tavily_raw: list[tuple[list[dict[str, Any]], bool]] = await asyncio.gather(*tavily_tasks)
+            degraded = degraded or self._merge(merged, tavily_raw)
+            logger.info(
+                "tavily tier-0 search complete",
+                request_id=request_id,
+                unique_hits=len(merged),
+            )
+
+            # Skip DuckDuckGo if Tavily returned enough results
+            if len(merged) >= _MIN_TIER0_RESULTS:
+                ranked = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
+                return ranked[:max_results], degraded
+
+        # ── DuckDuckGo Tier-0 (fallback when no Tavily key) ───────────────────
         tier0_queries = _expand_queries(query, _MAX_TIER0_EXPANSIONS)
         tier0_tasks = [
             self._search_domain(q, domain, backend, per_domain, request_id)
@@ -231,9 +360,7 @@ class LegalAuthoritySearchClient:
             for domain, backend in _TIER0_DOMAINS
         ]
         tier0_raw: list[tuple[list[dict[str, Any]], bool]] = await asyncio.gather(*tier0_tasks)
-
-        merged: dict[str, dict[str, Any]] = {}
-        degraded = self._merge(merged, tier0_raw)
+        degraded = degraded or self._merge(merged, tier0_raw)
 
         logger.info(
             "tier-0 legal authority search complete",
