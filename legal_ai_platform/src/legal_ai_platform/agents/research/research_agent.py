@@ -9,6 +9,11 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 
+from deep_research_from_scratch.platform_session_bridge import (
+    activate_platform_session,
+    clear_platform_session,
+)
+
 from legal_ai_platform.agents.base.base_agent import BaseAgent
 from legal_ai_platform.agents.research.strategies import (
     DeepResearchStrategy,
@@ -86,8 +91,13 @@ class ResearchAgent(BaseAgent):
         strategy = self._strategies[mode]
         graph = strategy.graph
 
+        session_block = request.context.get("session") or {}
+        platform_active = bool(session_block.get("platform_owns_session"))
+
         started = time.perf_counter()
         try:
+            if platform_active:
+                activate_platform_session(session_block)
             coro = graph.ainvoke(
                 {"messages": [HumanMessage(content=research_request.query)]},
                 config=run_config,
@@ -156,6 +166,9 @@ class ResearchAgent(BaseAgent):
                 success=False,
                 thread_id=thread_id,
             )
+        finally:
+            if platform_active:
+                clear_platform_session()
 
     def _build_research_response(self, state: dict[str, Any]) -> ResearchResponse:
         """Map LangGraph final state to ResearchResponse."""

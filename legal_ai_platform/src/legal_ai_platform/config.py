@@ -21,12 +21,21 @@ class PlatformSettings(BaseSettings):
     retrieval_server_url: str = "http://localhost:8001"
     retrieval_timeout_seconds: float = 30.0
     retrieval_max_retries: int = 3
+    document_server_url: str = "http://localhost:8003"
+    document_timeout_seconds: float = 60.0
+    document_max_retries: int = 3
     legal_search_backend: str = "custom"
     # Upper bound on a single agent run (the full pipeline can be long). 0 = no limit.
     agent_timeout_seconds: float = 300.0
     platform_host: str = "0.0.0.0"
     platform_port: int = 8080
     platform_log_level: str = "INFO"
+    platform_session_dir: str = "memory/sessions"
+    session_transcript_max_turns: int = 20
+    platform_owns_long_term_memory: bool = True
+    platform_owns_session: bool = True
+    session_memory_max_hits: int = 5
+    session_delete_legacy_research_files: bool = True
 
 
 @lru_cache

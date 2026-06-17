@@ -1,31 +1,40 @@
 # Legal AI Platform
 
-Orchestration layer for the Legal AI system.
+**Single API gateway** for all agents (research, contract review, and future specialists).
 
 ## Architecture
 
 ```
-Client
-  ↓
-API Gateway (FastAPI)
-  ↓
-Query Orchestrator
-  ↓
-Agent Registry → Research Agent (and future agents)
-  ↓
-RetrievalMCPClient (HTTP)
-  ↓
-Legal ai Retrieval Server (/tools/*)
-  ↓
-External Sources
+Client (UI / curl / CLM)
+        ↓
+POST /query  — legal_ai_platform (:8080)   ← ONLY public entry
+        ↓
+Query Orchestrator + Task Classifier
+        ↓
+   +---------+---------+
+   |                   |
+ResearchAgent     ReviewAgent
+   |                   |
+retrieval-mcp     document-mcp
+   |                   |
+document_core (library, used by document-mcp)
 ```
 
-## Quick Start
+There is **no separate** public `/review` service. Both agents use the same gateway.
 
-1. Start the retrieval server (from `Legal ai/`):
+## Quick start
+
+1. Start MCP servers (from `Legal ai/`):
+
+   ```bash
+   docker compose up -d retrieval-mcp document-mcp
+   ```
+
+   Or locally:
 
    ```bash
    uvicorn mcp.retrieval_server.main:app --port 8001
+   uvicorn mcp.document_server.main:app --port 8003
    ```
 
 2. Install and run the platform:
@@ -37,46 +46,56 @@ External Sources
    uvicorn legal_ai_platform.gateway.app:app --host 0.0.0.0 --port 8080
    ```
 
-3. Submit a query:
+3. List registered agents:
 
    ```bash
-   curl -X POST http://localhost:8080/query \
-     -H "Content-Type: application/json" \
-     -d '{"query": "What is the limitation period for breach of contract in India?"}'
+   curl http://localhost:8080/agents
    ```
 
-## Multi-turn (clarification) sessions
-
-The Research Agent may ask a clarifying question before researching. When the
-response has `"awaiting_input": true`, reply by sending the **same** `thread_id`
-returned in that response:
+## Research (default)
 
 ```bash
-# First call — note the thread_id and awaiting_input in the response
 curl -X POST http://localhost:8080/query \
   -H "Content-Type: application/json" \
-  -d '{"query": "I need help with a contract dispute"}'
-
-# Follow-up — reuse the returned thread_id to continue the conversation
-curl -X POST http://localhost:8080/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "It is a SaaS vendor agreement governed by Indian law", "thread_id": "<thread_id-from-previous-response>"}'
+  -d '{"query": "What is the limitation period for breach of contract in India?"}'
 ```
 
-Sessions are held in an in-memory checkpointer, so they reset on restart. Swap
-`MemorySaver` for a persistent checkpointer (e.g. Postgres) for durability.
+## Contract review (text MVP)
 
-> `AGENT_TIMEOUT_SECONDS` (default 300) bounds a single run; set `0` to disable.
+```bash
+curl -X POST http://localhost:8080/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_type": "review",
+    "tenant_id": "demo",
+    "contract_title": "Vendor MSA",
+    "contract_text": "12.2 Limitation of Liability. Liability shall not exceed fees paid in the prior twelve months.",
+    "policies": [
+      {
+        "title": "Vendor Policy",
+        "text": "4. Limitation of Liability. Liability cap is twelve months of fees."
+      }
+    ],
+    "contract_type": "msa"
+  }'
+```
 
-## Adding a New Agent
+Response `artifacts.report` contains structured JSON; `output` is markdown.
 
-1. Create `agents/<name>/<name>_agent.py` inheriting from `BaseAgent`.
-2. Register it in `container.py`:
+Classifier also routes to review when `contract_text` + `policies` are present, or when the query matches review intent patterns.
 
-   ```python
-   registry.register("contract", ContractAgent(...))
-   ```
+## Environment
 
-3. Add classification rules in `orchestration/classifier.py`.
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RETRIEVAL_SERVER_URL` | `http://localhost:8001` | Research MCP |
+| `DOCUMENT_SERVER_URL` | `http://localhost:8003` | Document MCP |
+| `AGENT_TIMEOUT_SECONDS` | `300` | Max agent runtime |
 
-No orchestrator code changes required.
+## Adding a new agent
+
+1. Implement `agents/<name>/<name>_agent.py` extending `BaseAgent`.
+2. Register in `container.py`: `registry.register("task_type", agent)`.
+3. Add classifier rules in `orchestration/classifier.py` if needed.
+
+No orchestrator changes required.

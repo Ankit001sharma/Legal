@@ -89,6 +89,18 @@ services:
     command: uvicorn mcp.retrieval_server.main:app --host 0.0.0.0 --port 8001
     restart: unless-stopped
 
+  document-mcp:
+    build:
+      context: ..
+      dockerfile: Legal ai/Dockerfile.document
+    container_name: document-mcp
+    ports:
+      - "8003:8002"
+    environment:
+      LOG_LEVEL: INFO
+    command: uvicorn mcp.document_server.main:app --host 0.0.0.0 --port 8002
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: legalai-redis

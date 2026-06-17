@@ -2,7 +2,7 @@
 name = "legal-ai-platform"
 version = "0.1.0"
 description = "Legal AI Platform — API Gateway, Query Orchestrator, and Agent Registry"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.27.0",
@@ -11,6 +11,8 @@ dependencies = [
     "pydantic-settings>=2.1.0",
     "python-dotenv>=1.0.0",
     "deep_research_from_scratch @ file:../Legal_Ai_Research_Agent",
+    "document-core @ file:../document_core",
+    "review-agent @ file:../review/review_agent",
 ]
 
 [project.optional-dependencies]

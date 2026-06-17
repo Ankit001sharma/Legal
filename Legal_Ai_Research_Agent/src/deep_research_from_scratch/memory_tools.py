@@ -123,6 +123,11 @@ def record_transcript(session_id: str, role: str, content: str) -> None:
         role: Message role, e.g. ``"user"`` or ``"assistant"``.
         content: Message text content.
     """
+    from deep_research_from_scratch.platform_session_bridge import platform_owns_session
+
+    if platform_owns_session():
+        return
+
     entry = {
         "type": role if role in TRANSCRIPT_MESSAGE_TYPES else "user",
         "uuid": str(uuid.uuid4()),

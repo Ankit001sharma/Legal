@@ -1,0 +1,22 @@
+liability:
+  label: Limitation of Liability
+  search_queries:
+    - limitation of liability cap damages
+    - liability shall not exceed
+indemnification:
+  label: Indemnification
+  search_queries:
+    - indemnify hold harmless defend
+    - indemnification obligation
+termination:
+  label: Termination
+  search_queries:
+    - termination for convenience notice period
+confidentiality:
+  label: Confidentiality
+  search_queries:
+    - confidential information non-disclosure
+data_protection:
+  label: Data Protection
+  search_queries:
+    - personal data processing privacy DPDP
