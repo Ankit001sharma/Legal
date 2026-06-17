@@ -59,6 +59,12 @@ _CRYPTO_KEYWORDS = (
     "digital asset", "vda", "virtual digital asset", "token", "nft", "web3",
 )
 
+_EXAM_FRAUD_KEYWORDS = (
+    "neet", "jee", "upsc", "exam leak", "paper leak", "question paper leak",
+    "exam fraud", "exam cheat", "public examination", "unfair means",
+    "competitive exam", "entrance exam",
+)
+
 
 def _expand_search_queries(topic: str) -> list[str]:
     """Build diverse Indian Kanoon / India Code queries for better case coverage."""
@@ -68,6 +74,21 @@ def _expand_search_queries(topic: str) -> list[str]:
     lower = topic.lower()
     # Topic-specific queries run FIRST so they are not cut off by BOOTSTRAP_SEARCH_QUERIES.
     priority: list[str] = []
+
+    if any(word in lower for word in _EXAM_FRAUD_KEYWORDS):
+        priority.extend([
+            # Primary statute for exam paper leaks — mandatory fetch
+            'site:indiacode.nic.in "Public Examinations" "Prevention of Unfair Means" 2024',
+            "site:indiacode.nic.in Public Examination Unfair Means Act 2024",
+            # NEET-specific SC proceedings
+            "site:indiankanoon.org NEET paper leak 2024 Supreme Court",
+            "site:indiankanoon.org NEET UG 2024 CBI investigation Supreme Court writ",
+            # BNS offences applicable to exam fraud
+            'site:indiacode.nic.in "Bharatiya Nyaya Sanhita" section 61 conspiracy',
+            'site:indiacode.nic.in "Bharatiya Nyaya Sanhita" section 111 organised crime',
+            "site:indiankanoon.org exam paper leak India criminal cheating conspiracy",
+            "site:indiankanoon.org NTA examination leak malpractice 2024",
+        ])
 
     if any(word in lower for word in _CRYPTO_KEYWORDS):
         priority.extend([
@@ -237,10 +258,10 @@ def bootstrap_legal_research(
         return "", "", []
 
     topic = _topic_phrase(research_brief, user_query)
-    max_queries = config.BOOTSTRAP_SEARCH_QUERIES
-    max_fetches = config.BOOTSTRAP_MAX_FETCHES
-    results_per_query = config.BOOTSTRAP_RESULTS_PER_QUERY
-    min_target = config.BOOTSTRAP_MIN_TARGET_FETCHES
+    max_queries = config.DEEP_BOOTSTRAP_SEARCH_QUERIES
+    max_fetches = config.DEEP_BOOTSTRAP_MAX_FETCHES
+    results_per_query = config.DEEP_BOOTSTRAP_RESULTS_PER_QUERY
+    min_target = config.DEEP_BOOTSTRAP_MIN_TARGET_FETCHES
 
     all_queries = _expand_search_queries(topic)
     search_blocks, merged_sources = _collect_search_hits(

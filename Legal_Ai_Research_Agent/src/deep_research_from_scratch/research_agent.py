@@ -90,8 +90,8 @@ def fetch_gate_passed(state: ResearcherState) -> bool:
     fetch_total, primary_fetches = count_fetches(sources)
     search_count = state.get("search_count", 0)
 
-    if fetch_total >= app_config.MIN_FETCHES:
-        if has_primary_search_urls(sources) and primary_fetches < app_config.MIN_PRIMARY_FETCHES:
+    if fetch_total >= app_config.DEEP_MIN_FETCHES:
+        if has_primary_search_urls(sources) and primary_fetches < app_config.DEEP_MIN_PRIMARY_FETCHES:
             return False
         return True
 
@@ -110,7 +110,7 @@ def fetch_gate_passed(state: ResearcherState) -> bool:
 
     if (
         state.get("fetch_gate_retries", 0) >= app_config.MAX_FETCH_GATE_RETRIES
-        and search_count >= app_config.MIN_SEARCHES
+        and search_count >= app_config.DEEP_MIN_SEARCHES
         and fetch_total == 0
     ):
         return True

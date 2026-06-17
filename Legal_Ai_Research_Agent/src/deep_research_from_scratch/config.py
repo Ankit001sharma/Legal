@@ -133,19 +133,55 @@ class _Config:
         # Max chars of research findings passed to the memo writer before truncation.
         self.LLM_FINDINGS_CHAR_BUDGET: int = _int("LLM_FINDINGS_CHAR_BUDGET", 60_000)
 
+        # ── Deep Research mode — exhaustive memo pipeline ───────────────────
+        # Deep-only knobs (used by research_agent_full, supervisor, bootstrap).
+        # Set DEEP_* env vars to override without affecting Normal Research mode.
+        self.DEEP_LLM_FINDINGS_CHAR_BUDGET: int = _int(
+            "DEEP_LLM_FINDINGS_CHAR_BUDGET", 100_000
+        )
+        self.DEEP_WRITER_MAX_TOKENS: int = _int("DEEP_WRITER_MAX_TOKENS", 16_384)
+        self.DEEP_MIN_WRITER_COMPLETION_TOKENS: int = _int(
+            "DEEP_MIN_WRITER_COMPLETION_TOKENS", 8192
+        )
+        self.DEEP_MAX_RESEARCHER_ITERATIONS: int = _int(
+            "DEEP_MAX_RESEARCHER_ITERATIONS", self.MAX_RESEARCHER_ITERATIONS
+        )
+        self.DEEP_MIN_FETCHES: int = _int("DEEP_MIN_FETCHES", self.MIN_FETCHES)
+        self.DEEP_MIN_PRIMARY_FETCHES: int = _int(
+            "DEEP_MIN_PRIMARY_FETCHES", self.MIN_PRIMARY_FETCHES
+        )
+        self.DEEP_MIN_SEARCHES: int = _int("DEEP_MIN_SEARCHES", self.MIN_SEARCHES)
+        self.DEEP_FETCH_MAX_CHARS: int = _int("DEEP_FETCH_MAX_CHARS", self.FETCH_MAX_CHARS)
+        self.DEEP_BOOTSTRAP_SEARCH_QUERIES: int = _int(
+            "DEEP_BOOTSTRAP_SEARCH_QUERIES", self.BOOTSTRAP_SEARCH_QUERIES
+        )
+        self.DEEP_BOOTSTRAP_MAX_FETCHES: int = _int(
+            "DEEP_BOOTSTRAP_MAX_FETCHES", self.BOOTSTRAP_MAX_FETCHES
+        )
+        self.DEEP_BOOTSTRAP_RESULTS_PER_QUERY: int = _int(
+            "DEEP_BOOTSTRAP_RESULTS_PER_QUERY", self.BOOTSTRAP_RESULTS_PER_QUERY
+        )
+        self.DEEP_BOOTSTRAP_MIN_TARGET_FETCHES: int = _int(
+            "DEEP_BOOTSTRAP_MIN_TARGET_FETCHES", self.BOOTSTRAP_MIN_TARGET_FETCHES
+        )
+        self.DEEP_FAST_RESEARCH_MODE: bool = _bool("DEEP_FAST_RESEARCH_MODE", False)
+
         # Skip the LLM semantic verifier (use deterministic checks only).
         # Recommended on Mistral free tier to avoid extra API calls / 429 errors.
         self.LLM_SKIP_VERIFIER: bool = _bool("LLM_SKIP_VERIFIER", False)
 
         # ── Normal Research mode (lightweight) ────────────────────────────────
         # Max search queries issued by the normal researcher loop (2-3 rounds).
-        self.NORMAL_MAX_SEARCH_QUERIES: int = _int("NORMAL_MAX_SEARCH_QUERIES", 3)
+        self.NORMAL_MAX_SEARCH_QUERIES: int = _int("NORMAL_MAX_SEARCH_QUERIES", 6)
         # Max document fetches in the normal researcher loop.
-        self.NORMAL_MAX_FETCHES: int = _int("NORMAL_MAX_FETCHES", 4)
+        self.NORMAL_MAX_FETCHES: int = _int("NORMAL_MAX_FETCHES", 8)
         # Results requested per search query in normal mode.
-        self.NORMAL_RESULTS_PER_QUERY: int = _int("NORMAL_RESULTS_PER_QUERY", 5)
+        self.NORMAL_RESULTS_PER_QUERY: int = _int("NORMAL_RESULTS_PER_QUERY", 8)
         # Max chars of retrieved text passed to the normal answer writer.
-        self.NORMAL_FINDINGS_CHAR_BUDGET: int = _int("NORMAL_FINDINGS_CHAR_BUDGET", 20_000)
+        self.NORMAL_FINDINGS_CHAR_BUDGET: int = _int("NORMAL_FINDINGS_CHAR_BUDGET", 30_000)
+        # Minimum fetched (full-text) sources before the writer is invoked.
+        # When fewer than this many sources are fetched, a "SOURCES INSUFFICIENT" message is returned.
+        self.NORMAL_MIN_FETCHED_SOURCES: int = _int("NORMAL_MIN_FETCHED_SOURCES", 2)
 
         if self.FAST_RESEARCH_MODE:
             # Cap only unset knobs — explicit MIN_FETCHES in .env is always honored.

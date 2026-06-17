@@ -66,6 +66,7 @@ def test_config_env_overrides(monkeypatch):
     monkeypatch.setenv("RETRIEVAL_SERVER_URL", "http://custom:9000")
     monkeypatch.setenv("MAX_REVIEWER_RETRIES", "5")
     monkeypatch.setenv("MAX_RESEARCHER_ITERATIONS", "10")
+    monkeypatch.setenv("DEEP_MAX_RESEARCHER_ITERATIONS", "10")
 
     try:
         # Reload modules in cascade order
@@ -91,6 +92,7 @@ def test_config_env_overrides(monkeypatch):
         monkeypatch.delenv("RETRIEVAL_SERVER_URL", raising=False)
         monkeypatch.delenv("MAX_REVIEWER_RETRIES", raising=False)
         monkeypatch.delenv("MAX_RESEARCHER_ITERATIONS", raising=False)
+        monkeypatch.delenv("DEEP_MAX_RESEARCHER_ITERATIONS", raising=False)
 
         importlib.reload(deep_research_from_scratch.config)
         importlib.reload(deep_research_from_scratch.memory_tools)

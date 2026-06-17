@@ -15,7 +15,7 @@ SERVICE_NAME = "retrieval-mcp"
 VERSION = "0.1.0"
 
 InternalStorage = Literal["postgres", "file"]
-WebSearchBackend = Literal["duckduckgo", "open-websearch", "legal-index"]
+WebSearchBackend = Literal["duckduckgo", "tavily", "open-websearch", "legal-index"]
 
 
 class Settings(BaseSettings):
@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     websearch_backend: WebSearchBackend = Field(
         default="duckduckgo",
         alias="WEBSEARCH_BACKEND",
+    )
+    # API keys for premium search backends
+    tavily_api_key: str = Field(
+        default="",
+        alias="TAVILY_API_KEY",
+    )
+    indiankanoon_api_key: str = Field(
+        default="",
+        alias="INDIANKANOON_API_KEY",
     )
     page_fetch_user_agent: str | None = Field(
         default=None,

@@ -269,6 +269,26 @@ def has_primary_search_urls(sources: list[RetrievedSource]) -> bool:
     return any(s.authority_tier == "primary" for s in sources)
 
 
+_SOURCE_TYPE_LABELS: dict[str, str] = {
+    "indiankanoon": "Indian Kanoon",
+    "indiacode": "India Code",
+    "escr": "eSCR",
+    "semantic": "Semantic",
+    "web": "web",
+}
+
+
+def citation_label(src: RetrievedSource, index: int) -> str:
+    """Return the source-type-qualified inline citation token, e.g. [Indian Kanoon:1].
+
+    Encodes the source origin in the label so readers can immediately tell whether a
+    citation comes from statute text (India Code), case law (Indian Kanoon), etc.
+    """
+    stype = (src.source_type or "web").lower()
+    label = _SOURCE_TYPE_LABELS.get(stype, stype.title())
+    return f"[{label}:{index}]"
+
+
 def format_writer_source_registry(sources: list[RetrievedSource]) -> str:
     """Format fetched sources as the ONLY authorities the memo writer may cite."""
     sources = filter_citable_sources(sources)
@@ -283,16 +303,19 @@ def format_writer_source_registry(sources: list[RetrievedSource]) -> str:
     unfetched = [s for s in sources if not s.fetched]
 
     lines = [
-        "Use ONLY the numbered sources below. Each inline [n] MUST map to one entry.",
+        "Use ONLY the labelled sources below. Inline citations MUST use the EXACT label shown",
+        "(e.g. [Indian Kanoon:1], [India Code:2]). NEVER write [1] alone — always include the",
+        "source-type prefix as shown in the registry.",
         f"Total: {len(sources)} registered ({len(fetched)} fetched, {len(unfetched)} snippet-only).",
         "",
     ]
     for index, src in enumerate(sources, 1):
+        lbl = citation_label(src, index)
         if src.fetched:
-            status = "FETCHED — cite freely with inline [n]"
+            status = f"FETCHED — cite freely with inline {lbl}"
         else:
-            status = "SNIPPET ONLY — MUST still cite as [n] but append '(snippet only — unverified)' after the [n]"
-        lines.append(f"[{index}] {src.title}")
+            status = f"SNIPPET ONLY — cite as {lbl} but append '(snippet only — unverified)' after the citation"
+        lines.append(f"{lbl} {src.title}")
         lines.append(f"  URL: {src.url}")
         lines.append(f"  Status: {status} | Tier: {src.authority_tier}")
         if src.citation:
@@ -327,7 +350,8 @@ _CASE_NAME_PATTERN = re.compile(
     r"\b[A-Z][A-Za-z0-9&\.\'\-\s]{2,60}\s+v\.?\s+(?:State\s+of\s+)?[A-Za-z][A-Za-z\s&\.\']{1,60}\b"
 )
 
-_INLINE_CITATION_PATTERN = re.compile(r"\[(\d+)\]")
+# Matches both plain [n] and source-type-qualified [Label:n] citations
+_INLINE_CITATION_PATTERN = re.compile(r"\[(?:[A-Za-z][A-Za-z\s]*:\s*)?(\d+)\]")
 
 _CITATION_PATTERNS = [
     # Neutral Supreme Court citation (e.g. "2024 INSC 101")
@@ -403,19 +427,29 @@ def extract_inline_citation_numbers(text: str) -> list[int]:
 
 
 def extract_sources_section_urls(text: str) -> dict[int, str]:
-    """Parse ### Sources section mapping [n] to URL."""
+    """Parse Table of Authorities / ### Sources section mapping citation index to URL.
+
+    Handles both the old plain [n] format and the new [Label:n] format, as well as
+    bare URLs and URLs embedded in markdown links [Title](URL).
+    """
     mapping: dict[int, str] = {}
     in_sources = False
     for line in (text or "").splitlines():
         stripped = line.strip()
-        if stripped.lower().startswith("### sources"):
+        lo = stripped.lower()
+        if lo.startswith("### sources") or lo.startswith("## table of authorities"):
             in_sources = True
             continue
-        if in_sources and stripped.startswith("## ") and not stripped.lower().startswith("### sources"):
+        if in_sources and stripped.startswith("## ") and not lo.startswith("## table"):
             break
-        match = re.match(r"^\[(\d+)\].*?(https?://\S+)", stripped)
-        if match:
-            mapping[int(match.group(1))] = match.group(2).rstrip(").,")
+        # Match [n] or [Label:n] at start of line
+        label_match = re.match(r"^\[(?:[A-Za-z][A-Za-z\s]*:\s*)?(\d+)\]", stripped)
+        if label_match:
+            n = int(label_match.group(1))
+            # Find URL bare or inside a markdown link parenthesis
+            url_match = re.search(r"https?://[^\s\)\]>]+", stripped)
+            if url_match:
+                mapping[n] = url_match.group(0).rstrip(").,")
     return mapping
 
 

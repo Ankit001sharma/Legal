@@ -199,8 +199,8 @@ def test_route_after_bootstrap_fast_mode_skips_supervisor():
     from deep_research_from_scratch.research_agent_full import route_after_bootstrap
 
     with patch("deep_research_from_scratch.research_agent_full.app_config") as mock_cfg:
-        mock_cfg.FAST_RESEARCH_MODE = True
-        mock_cfg.FAST_MODE_MIN_FETCHES = 3
+        mock_cfg.DEEP_FAST_RESEARCH_MODE = True
+        mock_cfg.DEEP_BOOTSTRAP_MIN_TARGET_FETCHES = 3
         state = AgentState(
             retrieved_sources=[
                 RetrievedSource(
@@ -219,8 +219,8 @@ def test_route_after_bootstrap_falls_back_to_supervisor_without_fetches():
     from deep_research_from_scratch.research_agent_full import route_after_bootstrap
 
     with patch("deep_research_from_scratch.research_agent_full.app_config") as mock_cfg:
-        mock_cfg.FAST_RESEARCH_MODE = True
-        mock_cfg.FAST_MODE_MIN_FETCHES = 3
+        mock_cfg.DEEP_FAST_RESEARCH_MODE = True
+        mock_cfg.DEEP_BOOTSTRAP_MIN_TARGET_FETCHES = 3
         state = AgentState(
             retrieved_sources=[
                 RetrievedSource(

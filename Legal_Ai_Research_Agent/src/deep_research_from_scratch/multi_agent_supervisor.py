@@ -85,7 +85,7 @@ supervisor_model_with_tools = supervisor_model.bind_tools(SUPERVISOR_TOOLS)
 # System constants (centralized in config.py)
 # Maximum number of tool call iterations for individual researcher agents;
 # prevents infinite loops and controls research depth per topic.
-max_researcher_iterations = config.MAX_RESEARCHER_ITERATIONS
+max_researcher_iterations = config.DEEP_MAX_RESEARCHER_ITERATIONS
 
 # Maximum number of concurrent research agents the supervisor can launch
 # (passed to the lead_researcher_prompt to limit parallel research tasks).

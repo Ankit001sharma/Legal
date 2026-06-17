@@ -1,4 +1,4 @@
-"""Self-hosted web search client — DuckDuckGo, open-webSearch, or legal-index."""
+"""Self-hosted web search client — DuckDuckGo, Tavily, open-webSearch, or legal-index."""
 
 from __future__ import annotations
 
@@ -12,6 +12,68 @@ from mcp.retrieval_server.config import Settings
 from mcp.retrieval_server.logging_setup import get_logger, truncate
 
 logger = get_logger(__name__)
+
+
+async def tavily_search(
+    query: str,
+    api_key: str,
+    max_results: int = 10,
+    *,
+    http_client: httpx.AsyncClient | None = None,
+    include_domains: list[str] | None = None,
+    timeout: float = 30.0,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Search via Tavily API — reliable, returns full content, designed for AI agents.
+
+    Returns (results, degraded). Never raises.
+    """
+    if not api_key:
+        return [], True
+
+    payload: dict[str, Any] = {
+        "api_key": api_key,
+        "query": query,
+        "search_depth": "advanced",
+        "max_results": max_results,
+        "include_raw_content": True,
+    }
+    if include_domains:
+        payload["include_domains"] = include_domains
+
+    try:
+        client = http_client or httpx.AsyncClient()
+        own_client = http_client is None
+        try:
+            response = await asyncio.wait_for(
+                client.post("https://api.tavily.com/search", json=payload, timeout=timeout),
+                timeout=timeout + 5,
+            )
+            response.raise_for_status()
+        finally:
+            if own_client:
+                await client.aclose()
+
+        data = response.json()
+        results: list[dict[str, Any]] = []
+        for item in data.get("results", []):
+            url = item.get("url", "")
+            if not url:
+                continue
+            # Use raw_content if available (full text), otherwise fall back to content snippet
+            snippet = item.get("raw_content") or item.get("content") or ""
+            results.append({
+                "url": url,
+                "title": item.get("title", "Untitled"),
+                "snippet": snippet[:8000],
+                "score": float(item.get("score", 0.5)),
+                "engine": "tavily",
+            })
+        logger.info("tavily search succeeded", query=truncate(query, 120), count=len(results))
+        return results, False
+
+    except Exception as exc:
+        logger.warning("tavily search failed", error=type(exc).__name__, message=str(exc))
+        return [], True
 
 
 def _extract_search_results(payload: object) -> list[dict[str, Any]]:
@@ -100,6 +162,14 @@ class WebSearchClient:
         """
         if self._backend == "legal-index":
             return await self._search_legal_index(query, max_results, request_id)
+        if self._backend == "tavily":
+            return await tavily_search(
+                query,
+                api_key=getattr(self._settings, "tavily_api_key", "") or "",
+                max_results=max_results,
+                http_client=self._client,
+                timeout=self._timeout,
+            )
         if self._backend == "duckduckgo":
             return await self._search_duckduckgo(query, max_results, request_id)
         return await self._search_open_websearch(query, max_results, request_id)

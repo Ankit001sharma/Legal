@@ -136,7 +136,7 @@ async def _fetch_async(
     url: str,
 ) -> tuple[dict[str, Any], RetrievedSource | None]:
     data = await client.fetch(url=url)
-    src = source_from_fetch(url, data, config.FETCH_MAX_CHARS)
+    src = source_from_fetch(url, data, config.DEEP_FETCH_MAX_CHARS)
     return data, src
 
 
@@ -181,7 +181,7 @@ def format_fetch_result(data: dict[str, Any], url: str) -> str:
     title = data.get("title") or url
     if not full_text or "Placeholder" in full_text:
         return f"Could not retrieve content from {url}. The page may be inaccessible or require authentication."
-    limit = config.FETCH_MAX_CHARS
+    limit = config.DEEP_FETCH_MAX_CHARS
     text = full_text[:limit]
     if len(full_text) > limit:
         text += (
