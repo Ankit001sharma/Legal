@@ -37,7 +37,11 @@ from deep_research_from_scratch.research_agent_scope import (
     write_research_brief,
 )
 from deep_research_from_scratch.research_bootstrap import bootstrap_legal_research
-from deep_research_from_scratch.report_sources import build_case_digest
+from deep_research_from_scratch.report_sources import (
+    build_case_digest,
+    build_procedural_timeline_digest,
+)
+from deep_research_from_scratch.source_enrichment import enrich_retrieved_sources
 from deep_research_from_scratch.source_registry import (
     RetrievedSource,
     build_verification_corpus,
@@ -96,15 +100,43 @@ async def bootstrap_research(state: AgentState, config: RunnableConfig):
 
 def route_after_bootstrap(
     state: AgentState,
-) -> Literal["supervisor_subgraph", "final_report_generation"]:
+) -> Literal["supervisor_subgraph", "enrich_sources"]:
     """Skip the LLM supervisor when fast mode has enough fetched primary sources."""
     if not app_config.DEEP_FAST_RESEARCH_MODE:
         return "supervisor_subgraph"
     sources = _collect_sources(state)
     _, primary_fetches = count_fetches(sources)
     if primary_fetches >= app_config.DEEP_BOOTSTRAP_MIN_TARGET_FETCHES:
-        return "final_report_generation"
+        return "enrich_sources"
     return "supervisor_subgraph"
+
+
+# ===== SOURCE ENRICHMENT (re-fetch snippets + targeted searches) =====
+
+
+async def enrich_sources(state: AgentState, config: RunnableConfig):
+    """Re-fetch snippet sources and run targeted BNS/chargesheet/procedural searches."""
+    sources = _collect_sources(state)
+    if not sources:
+        return {}
+
+    user_query = ""
+    for message in reversed(state.get("messages", []) or []):
+        if getattr(message, "type", None) == "human":
+            user_query = str(getattr(message, "content", "") or "")
+            break
+
+    enriched, note = enrich_retrieved_sources(
+        sources,
+        research_brief=state.get("research_brief") or "",
+        user_query=user_query,
+    )
+    update: dict = {"retrieved_sources": enriched}
+    if note:
+        notes = list(state.get("notes") or [])
+        notes.append(note)
+        update["notes"] = notes
+    return update
 
 
 # ===== FINAL REPORT GENERATION =====
@@ -176,6 +208,9 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
     findings = _trim_findings(findings_text, app_config.DEEP_LLM_FINDINGS_CHAR_BUDGET)
     source_registry = format_writer_source_registry(sources)
     case_digest = build_case_digest(sources)
+    timeline_digest = build_procedural_timeline_digest(
+        sources, state.get("research_brief") or ""
+    )
 
     # On a revise pass, feed the reviewer's required fixes back to the writer.
     verification = state.get("verification")
@@ -189,6 +224,7 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
         findings=findings,
         source_registry=source_registry,
         case_digest=case_digest,
+        timeline_digest=timeline_digest,
         date=get_today_str(),
         verification_feedback=verification_feedback,
     )
@@ -238,6 +274,7 @@ deep_researcher_builder.add_node("clarify_with_user", clarify_with_user)
 deep_researcher_builder.add_node("write_research_brief", write_research_brief)
 deep_researcher_builder.add_node("bootstrap_research", bootstrap_research)
 deep_researcher_builder.add_node("supervisor_subgraph", supervisor_agent)
+deep_researcher_builder.add_node("enrich_sources", enrich_sources)
 deep_researcher_builder.add_node("final_report_generation", final_report_generation)
 deep_researcher_builder.add_node("verify_report", verify_report)
 deep_researcher_builder.add_node("finalize_report", finalize_report)
@@ -255,10 +292,11 @@ deep_researcher_builder.add_conditional_edges(
     route_after_bootstrap,
     {
         "supervisor_subgraph": "supervisor_subgraph",
-        "final_report_generation": "final_report_generation",
+        "enrich_sources": "enrich_sources",
     },
 )
-deep_researcher_builder.add_edge("supervisor_subgraph", "final_report_generation")
+deep_researcher_builder.add_edge("supervisor_subgraph", "enrich_sources")
+deep_researcher_builder.add_edge("enrich_sources", "final_report_generation")
 deep_researcher_builder.add_edge("final_report_generation", "verify_report")
 deep_researcher_builder.add_conditional_edges(
     "verify_report",

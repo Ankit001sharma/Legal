@@ -166,6 +166,15 @@ class _Config:
         )
         self.DEEP_FAST_RESEARCH_MODE: bool = _bool("DEEP_FAST_RESEARCH_MODE", False)
 
+        # Re-fetch snippet-only sources and run targeted BNS/chargesheet searches
+        self.ENABLE_SNIPPET_REFETCH: bool = _bool("ENABLE_SNIPPET_REFETCH", True)
+        self.DEEP_SNIPPET_REFETCH_MAX: int = _int("DEEP_SNIPPET_REFETCH_MAX", 20)
+        self.ENABLE_TARGETED_SOURCE_SUPPLEMENT: bool = _bool(
+            "ENABLE_TARGETED_SOURCE_SUPPLEMENT", True
+        )
+        self.DEEP_SUPPLEMENT_MAX_QUERIES: int = _int("DEEP_SUPPLEMENT_MAX_QUERIES", 6)
+        self.DEEP_SUPPLEMENT_MAX_FETCHES: int = _int("DEEP_SUPPLEMENT_MAX_FETCHES", 8)
+
         # Skip the LLM semantic verifier (use deterministic checks only).
         # Recommended on Mistral free tier to avoid extra API calls / 429 errors.
         self.LLM_SKIP_VERIFIER: bool = _bool("LLM_SKIP_VERIFIER", False)

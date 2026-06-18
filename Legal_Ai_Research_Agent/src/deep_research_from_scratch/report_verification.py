@@ -52,7 +52,7 @@ from deep_research_from_scratch.source_registry import (
     normalize_url,
     redact_fabricated_citations,
 )
-from deep_research_from_scratch.report_sources import ensure_sources_section
+from deep_research_from_scratch.report_sources import ensure_sources_section, linkify_citations
 from deep_research_from_scratch.state_scope import AgentState, VerificationResult
 from deep_research_from_scratch.utils import get_today_str
 
@@ -541,6 +541,7 @@ def finalize_report(state: AgentState, config: RunnableConfig) -> dict:
         sources.append(item if isinstance(item, RetrievedSource) else RetrievedSource(**item))
 
     report = ensure_sources_section(report, sources)
+    report = linkify_citations(report, sources)
 
     if verification is not None and not verification.passed:
         if verification.fabricated_or_unverified_citations:
