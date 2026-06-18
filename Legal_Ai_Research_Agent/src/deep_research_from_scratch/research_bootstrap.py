@@ -146,6 +146,12 @@ def _expand_search_queries(topic: str) -> list[str]:
             f"site:indiacode.nic.in Code of Criminal Procedure {topic}",
             f"site:indiankanoon.org {topic} BNS BNSS 2024 supreme court",
             f"site:indiankanoon.org {topic} IPC CrPC supreme court",
+            "BNS 304 culpable homicide India court 2024 2025",
+            'site:indiankanoon.org "BNS" "304" culpable homicide 2024 2025',
+            'site:indiankanoon.org "BNS" section 103 murder judgment 2024 2025',
+            "site:indiankanoon.org chargesheet filing procedure BNSS CrPC India",
+            f"site:indiankanoon.org {topic} chargesheet",
+            f"site:indiankanoon.org {topic} FIR bail order",
         ])
 
     # Civil law — always fetch Transfer of Property / Contract Act where relevant

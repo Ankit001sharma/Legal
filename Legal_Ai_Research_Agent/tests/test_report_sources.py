@@ -25,8 +25,9 @@ def test_ensure_sources_section_appends_full_urls():
             url="https://indiankanoon.org/doc/999/",
             title="Alpha v Beta",
             fetched=True,
+            source_type="indiankanoon",
         )
     ]
     out = ensure_sources_section(report, sources)
     assert "### Sources" in out
-    assert "[1] Alpha v Beta: https://indiankanoon.org/doc/999/" in out
+    assert "[Indian Kanoon:1] [Alpha v Beta](https://indiankanoon.org/doc/999/)" in out
