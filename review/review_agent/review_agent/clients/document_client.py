@@ -101,6 +101,23 @@ class DocumentMCPClient:
         data = await self._post("/tools/search_policy_by_categories", payload)
         return [RetrievalHit.model_validate(hit) for hit in data.get("results", [])]
 
+    async def list_policy_ids_by_categories(
+        self,
+        tenant_id: str,
+        categories: list[str],
+        *,
+        contract_type: str | None = None,
+    ) -> list[UUID]:
+        data = await self._post(
+            "/tools/list_policy_ids_by_categories",
+            {
+                "tenant_id": tenant_id,
+                "categories": categories,
+                "contract_type": contract_type,
+            },
+        )
+        return [UUID(doc_id) for doc_id in data.get("document_ids", [])]
+
     async def list_sections(self, request: ListSectionsRequest) -> list[IndexedChunk]:
         data = await self._post("/tools/list_sections", request.model_dump(mode="json"))
         return [IndexedChunk.model_validate(item) for item in data.get("sections", [])]
@@ -149,6 +166,17 @@ class DocumentMCPClient:
         data = await self._post("/tools/register_policy", payload.model_dump(mode="json"))
         return PolicyRegistryRecord.model_validate(data)
 
+    async def register_contract(self, request) -> Any:
+        from document_core.schemas.registry import PolicyRegistryRecord, RegisterContractRequest
+
+        payload = (
+            request
+            if isinstance(request, RegisterContractRequest)
+            else RegisterContractRequest.model_validate(request)
+        )
+        data = await self._post("/tools/register_contract", payload.model_dump(mode="json"))
+        return PolicyRegistryRecord.model_validate(data)
+
     async def get_policy_by_ref(self, tenant_id: str, policy_ref: str):
         from document_core.schemas.registry import GetPolicyByRefRequest, PolicyRegistryRecord
 
@@ -178,6 +206,45 @@ class DocumentMCPClient:
             if exc.response.status_code == 404:
                 return None
             raise
+
+    async def get_contract_by_ref(self, tenant_id: str, contract_ref: str):
+        from document_core.schemas.registry import GetPolicyByRefRequest, PolicyRegistryRecord
+
+        try:
+            if self._injected_client is not None:
+                response = await self._injected_client.post(
+                    f"{self.base_url}/tools/get_contract_by_ref",
+                    json=GetPolicyByRefRequest(
+                        tenant_id=tenant_id,
+                        policy_ref=contract_ref,
+                    ).model_dump(mode="json"),
+                )
+            else:
+                async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                    response = await client.post(
+                        f"{self.base_url}/tools/get_contract_by_ref",
+                        json=GetPolicyByRefRequest(
+                            tenant_id=tenant_id,
+                            policy_ref=contract_ref,
+                        ).model_dump(mode="json"),
+                    )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            return PolicyRegistryRecord.model_validate(response.json())
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return None
+            raise
+
+    async def delete_policy(self, tenant_id: str, policy_ref: str):
+        from document_core.schemas.registry import DeletePolicyRequest, DeletePolicyResult
+
+        data = await self._post(
+            "/tools/delete_policy",
+            DeletePolicyRequest(tenant_id=tenant_id, policy_ref=policy_ref).model_dump(mode="json"),
+        )
+        return DeletePolicyResult.model_validate(data)
 
     async def sync_policy_from_catalog(self, tenant_id: str, policy_ref: str, *, force_reindex: bool = False):
         from document_core.schemas.registry import SyncPolicyFromCatalogRequest

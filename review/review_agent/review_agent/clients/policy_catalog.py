@@ -10,6 +10,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from document_core.schemas.chunk import DocumentKind, IngestRequest, IngestResult
+from document_core.schemas.taxonomy import normalize_categories
 from document_core.services.registry import stable_policy_document_id
 from review_agent.clients.document_client import DocumentMCPClient
 
@@ -96,6 +97,7 @@ async def index_fetched_policy(
 ) -> tuple[IngestResult, dict[str, Any]]:
     """Index a catalog policy with stable document_id (idempotent re-fetch)."""
     document_id = stable_policy_document_id(tenant_id, policy_ref, document.document_id)
+    categories = normalize_categories(list(document.metadata.get("categories") or []))
     result = await client.index_policy(
         IngestRequest(
             tenant_id=tenant_id,
@@ -105,6 +107,7 @@ async def index_fetched_policy(
             text=document.text,
             policy_type=document.policy_type or default_policy_type,
             applies_to_contract_types=document.applies_to_contract_types,
+            categories=categories,
             metadata={"policy_ref": policy_ref, **document.metadata},
         )
     )

@@ -20,6 +20,28 @@ class RegisterPolicyRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class RegisterContractRequest(BaseModel):
+    tenant_id: str
+    contract_ref: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1)
+    document_id: UUID | None = None
+    contract_type: str | None = None
+    source: str = "catalog"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DeletePolicyRequest(BaseModel):
+    tenant_id: str
+    policy_ref: str = Field(..., min_length=1)
+
+
+class DeletePolicyResult(BaseModel):
+    tenant_id: str
+    policy_ref: str
+    document_id: UUID
+    index_status: Literal["deleted"]
+
+
 class GetPolicyByRefRequest(BaseModel):
     tenant_id: str
     policy_ref: str = Field(..., min_length=1)
@@ -28,7 +50,7 @@ class GetPolicyByRefRequest(BaseModel):
 class ListPolicyRegistryRequest(BaseModel):
     tenant_id: str
     kind: Literal["contract", "policy"] | None = None
-    index_status: Literal["pending", "indexed", "failed"] | None = None
+    index_status: Literal["pending", "indexed", "failed", "deleted"] | None = None
 
 
 class SyncPolicyFromCatalogRequest(BaseModel):
@@ -45,7 +67,7 @@ class PolicyRegistryRecord(BaseModel):
     kind: Literal["contract", "policy"] = "policy"
     policy_type: str | None = None
     applies_to_contract_types: list[str] = Field(default_factory=list)
-    index_status: Literal["pending", "indexed", "failed"]
+    index_status: Literal["pending", "indexed", "failed", "deleted"]
     content_hash: str | None = None
     source: str = "catalog"
     metadata: dict[str, Any] = Field(default_factory=dict)

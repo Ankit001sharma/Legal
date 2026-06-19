@@ -42,6 +42,9 @@ class PlatformSettings(BaseSettings):
     session_memory_max_hits: int = 5
     session_delete_legacy_research_files: bool = True
 
+    review_require_contract_document_id: bool = False
+    review_reject_inline_policies: bool = False
+
 
 @lru_cache
 def get_settings() -> PlatformSettings:

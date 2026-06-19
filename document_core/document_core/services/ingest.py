@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from document_core.indexer.parent_child import build_parent_child_chunks
+from document_core.parser.structured_sections import sections_to_tree
 from document_core.parser.text_parser import parse_text_to_tree
 from document_core.schemas.chunk import IngestRequest, IngestResult, StructureConfidence, new_document_id
 from document_core.store.memory_store import get_store
@@ -19,11 +20,19 @@ async def ingest_document(
     document_id = request.document_id or new_document_id()
     warnings: list[str] = []
 
-    tree = parse_text_to_tree(
-        document_id=document_id,
-        title=request.title,
-        text=request.text,
-    )
+    if request.sections:
+        tree = sections_to_tree(
+            document_id=document_id,
+            title=request.title,
+            sections=request.sections,
+        )
+        warnings.append("structured sections ingest; heuristic parser skipped")
+    else:
+        tree = parse_text_to_tree(
+            document_id=document_id,
+            title=request.title,
+            text=request.text,
+        )
 
     if tree.structure_confidence == StructureConfidence.LOW:
         warnings.append("structure_confidence=low: headings may be incomplete")

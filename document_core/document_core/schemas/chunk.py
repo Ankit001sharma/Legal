@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from document_core.schemas.taxonomy import normalize_categories
 
@@ -28,12 +28,20 @@ class StructureConfidence(str, Enum):
     LOW = "low"
 
 
+class IngestSectionInput(BaseModel):
+    section_id: str = Field(..., min_length=1)
+    title: str = ""
+    text: str = Field(..., min_length=1)
+    level: int = Field(default=1, ge=0, le=6)
+
+
 class IngestRequest(BaseModel):
     tenant_id: str
     document_id: UUID | None = None
     title: str = "Untitled document"
     kind: DocumentKind = DocumentKind.CONTRACT
-    text: str = Field(..., min_length=1, description="Raw document text (PDF/DOCX later)")
+    text: str = Field(default="", description="Raw text; required if sections empty")
+    sections: list[IngestSectionInput] = Field(default_factory=list)
     policy_type: str | None = None
     applies_to_contract_types: list[str] = Field(default_factory=list)
     categories: list[str] = Field(
@@ -48,13 +56,13 @@ class IngestRequest(BaseModel):
     def normalize_ingest_categories(cls, value: list[str] | None) -> list[str]:
         return normalize_categories(value if isinstance(value, list) else [])
 
-    @field_validator("text")
-    @classmethod
-    def strip_text(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("text must not be empty")
-        return stripped
+    @model_validator(mode="after")
+    def require_text_or_sections(self) -> Self:
+        if not self.sections and not (self.text or "").strip():
+            raise ValueError("text or sections[] required")
+        if self.text:
+            self.text = self.text.strip()
+        return self
 
 
 class SectionNode(BaseModel):

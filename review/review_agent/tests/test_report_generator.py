@@ -1,36 +1,65 @@
-"""Tests for markdown report rendering."""
+"""Tests for markdown report synthesizer (P5.3/P5.4)."""
 
 from __future__ import annotations
 
-from uuid import uuid4
+import uuid
 
 from document_core.schemas.compliance import ComplianceFinding, ComplianceStatus, ReviewReport, Severity
-
 from review_agent.reports.generator import render_markdown_report
+from review_agent.schemas.review_artifact import ReviewArtifact, ReviewArtifactOps, SectionAuditRow
 
 
-def test_report_shows_violated_policy_line():
-    doc_id = uuid4()
-    finding = ComplianceFinding(
-        finding_id="f1",
-        dimension_id="d1",
-        dimension_label="Limitation of Liability",
-        status=ComplianceStatus.NON_COMPLIANT,
-        severity=Severity.CRITICAL,
-        policy_document_id=doc_id,
-        contract_quote="unlimited liability",
-        policy_quote="liability shall not exceed fees",
-        rationale="Contract removes cap.",
-        grounded=True,
-        metadata={"policy_title": "Vendor Playbook 2024"},
+def test_render_markdown_includes_summary_and_ops():
+    artifact = ReviewArtifact(
+        run_id="run-1",
+        tenant_id="demo",
+        contract_document_id=str(uuid.uuid4()),
+        contract_title="MSA",
+        sections=[SectionAuditRow(section_id="s1", title="Liability")],
+        discovery={"discovered_policy_document_ids": ["p1", "p2"]},
+        ops=ReviewArtifactOps(
+            retrieval_retry_sections=3,
+            backfill_count=1,
+            ungrounded_count=2,
+            playbook_compare_count=4,
+            policy_conflict_count=1,
+        ),
     )
     report = ReviewReport(
         tenant_id="demo",
-        contract_document_id=uuid4(),
+        contract_document_id=uuid.uuid4(),
         contract_title="MSA",
-        findings=[finding],
+        findings=[
+            ComplianceFinding(
+                finding_id="f1",
+                dimension_id="s1:x",
+                dimension_label="Liability Cap",
+                status=ComplianceStatus.NON_COMPLIANT,
+                severity=Severity.CRITICAL,
+                contract_section_id="s1",
+                rationale="Cap too low.",
+            )
+        ],
+    )
+    md = render_markdown_report(report, artifact=artifact)
+    assert "## Executive summary" in md
+    assert "## Pipeline operations" in md
+    assert "Retrieval retries (sections) | 3" in md
+    assert "Playbook compare findings | 4" in md
+    assert "## Findings" in md
+    assert "Liability Cap" in md
+    assert "compare_items" not in md.lower()
+
+
+def test_render_markdown_without_artifact_still_works():
+    report = ReviewReport(
+        tenant_id="demo",
+        contract_document_id=uuid.uuid4(),
+        contract_title="NDA",
+        findings=[],
+        metadata={"reviewable_section_count": 5, "discovered_policy_document_ids": ["a"]},
     )
     md = render_markdown_report(report)
-    assert "Violated policy" in md
-    assert "Vendor Playbook 2024" in md
-    assert "Limitation of Liability" in md
+    assert "## Executive summary" in md
+    assert "## Findings" in md
+    assert "## Pipeline operations" not in md

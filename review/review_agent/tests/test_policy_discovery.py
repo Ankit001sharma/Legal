@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+
+pytestmark = pytest.mark.integration
 from httpx import ASGITransport, AsyncClient
 
 from document_core.schemas.chunk import DocumentKind, IngestRequest
@@ -28,7 +30,7 @@ async def test_discover_policies_by_liability_topic():
             )
         )
         settings = ReviewSettings()
-        discovered, warnings = await discover_policies_from_topics(
+        discovered, warnings, _meta = await discover_policies_from_topics(
             client,
             tenant_id="demo",
             topics=["limitation of liability", "indemnification"],
@@ -50,7 +52,7 @@ async def test_discover_policies_empty_store_warning():
     async with AsyncClient(transport=transport, base_url="http://test") as http:
         client = DocumentMCPClient("http://test", http_client=http)
         settings = ReviewSettings()
-        discovered, warnings = await discover_policies_from_topics(
+        discovered, warnings, _meta = await discover_policies_from_topics(
             client,
             tenant_id="empty",
             topics=["limitation of liability"],
@@ -79,7 +81,7 @@ async def test_discover_policies_respects_max_cap():
                 )
             )
         settings = ReviewSettings(discovery_max_policies=1)
-        discovered, _ = await discover_policies_from_topics(
+        discovered, _, _meta = await discover_policies_from_topics(
             client,
             tenant_id="demo",
             topics=["limitation of liability"],
@@ -89,3 +91,32 @@ async def test_discover_policies_respects_max_cap():
         )
 
     assert len(discovered) == 1
+
+
+@pytest.mark.asyncio
+async def test_discover_policies_cap_emits_warning():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as http:
+        client = DocumentMCPClient("http://test", http_client=http)
+        for idx in range(3):
+            await client.index_policy(
+                IngestRequest(
+                    tenant_id="demo",
+                    title=f"Policy {idx}",
+                    kind=DocumentKind.POLICY,
+                    text=f"{idx}. Limitation of Liability\nCap applies.\n",
+                )
+            )
+        settings = ReviewSettings(discovery_max_policies=1, discovery_warn_on_cap=True)
+        discovered, warnings, meta = await discover_policies_from_topics(
+            client,
+            tenant_id="demo",
+            topics=["limitation of liability"],
+            contract_type=None,
+            policy_type=None,
+            settings=settings,
+        )
+
+    assert len(discovered) == 1
+    assert meta["discovery_capped"] is True
+    assert any("capped at 1" in warning for warning in warnings)

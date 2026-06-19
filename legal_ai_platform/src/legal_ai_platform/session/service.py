@@ -75,6 +75,9 @@ class SessionService:
         ctx = request.effective_context()
         if request.contract_text or ctx.get("contract_text"):
             state.matter.contract_text = request.contract_text or ctx.get("contract_text")
+        doc_id = request.contract_document_id or ctx.get("contract_document_id")
+        if doc_id:
+            state.matter.contract_document_id = str(doc_id).strip()
         if request.contract_title or ctx.get("contract_title"):
             state.matter.contract_title = request.contract_title or ctx.get("contract_title")
         if request.policies is not None or ctx.get("policies"):
@@ -111,6 +114,8 @@ class SessionService:
         updates: dict[str, Any] = {}
         if not request.contract_text and matter.contract_text:
             updates["contract_text"] = matter.contract_text
+        if not request.contract_document_id and matter.contract_document_id:
+            updates["contract_document_id"] = matter.contract_document_id
         if not request.contract_title and matter.contract_title:
             updates["contract_title"] = matter.contract_title
         if not request.policies and matter.policies:

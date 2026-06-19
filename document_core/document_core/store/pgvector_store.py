@@ -411,6 +411,37 @@ class PgVectorDocumentStore:
             ).mappings().first()
         return _record_from_row(row) if row else None
 
+    def get_policy_registry_by_document_id(
+        self, tenant_id: str, document_id: UUID
+    ) -> PolicyRegistryRecord | None:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    SELECT * FROM policy_documents
+                    WHERE tenant_id = :tenant_id AND document_id = :document_id
+                    LIMIT 1
+                    """
+                ),
+                {"tenant_id": tenant_id, "document_id": document_id},
+            ).mappings().first()
+        return _record_from_row(row) if row else None
+
+    def tombstone_policy_by_ref(self, tenant_id: str, policy_ref: str) -> PolicyRegistryRecord | None:
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    UPDATE policy_documents
+                    SET index_status = 'deleted'
+                    WHERE tenant_id = :tenant_id AND policy_ref = :policy_ref
+                    RETURNING *
+                    """
+                ),
+                {"tenant_id": tenant_id, "policy_ref": policy_ref},
+            ).mappings().first()
+        return _record_from_row(row) if row else None
+
     def list_policy_registry(
         self,
         tenant_id: str,
@@ -426,6 +457,8 @@ class PgVectorDocumentStore:
         if index_status is not None:
             query += " AND index_status = :index_status"
             params["index_status"] = index_status
+        else:
+            query += " AND index_status != 'deleted'"
         query += " ORDER BY title"
         with self._engine.connect() as conn:
             rows = conn.execute(text(query), params).mappings()
@@ -500,6 +533,7 @@ class PgVectorDocumentStore:
         sql = f"""
             SELECT document_id FROM policy_documents
             WHERE tenant_id = :tenant_id AND kind = :kind
+              AND index_status = 'indexed'
               AND EXISTS (
                 SELECT 1 FROM jsonb_array_elements_text(
                     COALESCE(metadata->'categories', '[]'::jsonb)

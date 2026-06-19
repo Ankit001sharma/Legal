@@ -194,6 +194,10 @@ async def list_sections(
     store: DocumentStore | None = None,
 ) -> list[IndexedChunk]:
     doc_store = store or get_store()
+    record = doc_store.get_policy_registry_by_document_id(request.tenant_id, request.document_id)
+    if record is not None and record.index_status == "deleted":
+        raise ValueError("document deleted")
+
     parents: list[IndexedChunk] = []
     for parent in doc_store.get_parents(request.tenant_id, request.document_id):
         if request.kind and parent.kind != request.kind:

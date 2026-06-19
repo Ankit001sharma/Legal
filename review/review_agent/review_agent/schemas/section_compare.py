@@ -22,3 +22,15 @@ class SectionCompareItem(BaseModel):
 
 class BatchSectionCompareLLMResult(BaseModel):
     items: list[SectionCompareItem] = Field(default_factory=list)
+
+
+class FinalGapVerifyItem(BaseModel):
+    section_id: str
+    status: ComplianceStatus
+    severity: Severity = Severity.INFO
+    contract_quote: str = ""
+    rationale: str = Field(..., min_length=5)
+
+
+class BatchFinalGapVerifyLLMResult(BaseModel):
+    items: list[FinalGapVerifyItem] = Field(default_factory=list)

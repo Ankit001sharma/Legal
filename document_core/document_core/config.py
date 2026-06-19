@@ -17,7 +17,7 @@ class DocumentCoreSettings(BaseSettings):
     search_hybrid_alpha: float = 0.5
     retrieval_recall_top_k: int = 20
     retrieval_final_top_k: int = 10
-    reranker_enabled: bool = False
+    reranker_enabled: bool = True
     embedding_model: str = "nomic-ai/modernbert-embed-base"
     embedding_enabled: bool = True
     embedding_dim: int = 768

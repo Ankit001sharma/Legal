@@ -14,11 +14,12 @@ Three phased plans to replace static YAML-driven review with **production-grade 
 | [Phase 7 — Java Catalog Integration](./PHASE7_JAVA_CATALOG_INTEGRATION_PLAN.md) | `DR-PHASE-7` | Implemented |
 | [Java Catalog API Contract](./JAVA_CATALOG_API_CONTRACT.md) | — | Spec |
 | [Phase 9 — Postgres Session & Memory](../legal_ai_platform/docs/PHASE9_POSTGRES_SESSION_MEMORY_PLAN.md) | `DR-PHASE-9` | Implemented |
-| [Phase 10 — Section-First + High-Recall Retrieval](./PHASE10_SECTION_FIRST_RETRIEVAL_PLAN.md) | `DR-PHASE-10` | Planned |
+| [Phase 10 — Section-First + High-Recall Retrieval](./PHASE10_SECTION_FIRST_RETRIEVAL_PLAN.md) | `DR-PHASE-10` | v1 shipped |
+| [Phase 10 — Production unified (single pipeline)](./PHASE10_PRODUCTION_UNIFIED_IMPL_PLAN.md) | `DR-PHASE-10-PROD` | **Execute next** |
 
-## Phase 10 (next — accuracy)
+## Phase 10 (accuracy — production cutover)
 
-Section-first LLM review + multi-path policy retrieval (dense + FTS + metadata → union → rerank). See [Phase 10 plan](./PHASE10_SECTION_FIRST_RETRIEVAL_PLAN.md).
+Section-first LLM review + multi-path retrieval. v1 dual-mode shipped; **next:** [Production unified plan](./PHASE10_PRODUCTION_UNIFIED_IMPL_PLAN.md) — one pipeline, remove legacy, no fallbacks.
 
 ## Phase 9 (done — session & memory)
 

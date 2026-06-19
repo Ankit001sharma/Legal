@@ -28,9 +28,6 @@ def _explicit_policies_in_request(state: ReviewState) -> bool:
 
 async def contract_routing_node(state: ReviewState, client: DocumentMCPClient) -> dict[str, Any]:
     settings = get_settings()
-    if settings.review_policy_source != "tenant_auto":
-        return {}
-
     result, warnings = await route_contract(
         contract_text=state.get("contract_text") or "",
         contract_sections=state.get("contract_sections") or [],
@@ -52,13 +49,11 @@ async def contract_routing_node(state: ReviewState, client: DocumentMCPClient) -
 
 async def policy_discovery_node(state: ReviewState, client: DocumentMCPClient) -> dict[str, Any]:
     settings = get_settings()
-    if settings.review_policy_source != "tenant_auto":
-        return {}
 
     if _explicit_policies_in_request(state):
         return {
             "warnings": [
-                "tenant_auto discovery skipped: explicit policies/refs/document_ids in request."
+                "policy discovery skipped: explicit policies/refs/document_ids in request."
             ],
         }
 
@@ -66,7 +61,7 @@ async def policy_discovery_node(state: ReviewState, client: DocumentMCPClient) -
     topics = routing.get("topics") or []
     contract_type = state.get("contract_type") or routing.get("contract_type")
 
-    discovered, warnings = await discover_policies_from_topics(
+    discovered, warnings, discovery_meta = await discover_policies_from_topics(
         client,
         tenant_id=state["tenant_id"],
         topics=topics,
@@ -85,4 +80,8 @@ async def policy_discovery_node(state: ReviewState, client: DocumentMCPClient) -
         "indexed_policies": indexed_entries,
         "discovery_warnings": warnings,
         "warnings": warnings,
+        "compliance_stats": {
+            **dict(state.get("compliance_stats") or {}),
+            **discovery_meta,
+        },
     }

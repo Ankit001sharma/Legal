@@ -1,10 +1,20 @@
-"""Pytest configuration — default to lexical mode for deterministic e2e in CI."""
+"""Pytest configuration — section-first pipeline."""
 
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 import pytest
+
+_LEGAL_AI = Path(__file__).resolve().parents[3] / "Legal ai"
+if _LEGAL_AI.is_dir() and str(_LEGAL_AI) not in sys.path:
+    sys.path.insert(0, str(_LEGAL_AI))
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "integration: requires Postgres pgvector")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -20,6 +30,14 @@ def _database_url_for_tests():
 
 
 @pytest.fixture(autouse=True)
+def _integration_pg_document_store(request):
+    if "integration" not in request.node.keywords:
+        yield
+        return
+    yield request.getfixturevalue("pg_document_store")
+
+
+@pytest.fixture
 def pg_document_store(pg_engine, database_url):
     from sqlalchemy import text
 
@@ -60,12 +78,9 @@ def pg_engine(database_url: str):
 
 
 @pytest.fixture(autouse=True)
-def compliance_lexical_for_ci(monkeypatch: pytest.MonkeyPatch):
-    """E2E tests run without LLM unless explicitly overridden."""
-    monkeypatch.setenv("COMPLIANCE_MODE", "lexical")
-    monkeypatch.setenv("REVIEW_PLAN_MODE", "dynamic")
-    monkeypatch.setenv("REVIEW_POLICY_SOURCE", "request")
-    monkeypatch.setenv("REVIEW_PIPELINE_MODE", "legacy")
+def review_settings_defaults(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("REVIEW_POLICY_SCOPE", "discovered")
+    monkeypatch.setenv("GUARD_PASS_ENABLED", "false")
     from review_agent.config import get_settings
 
     get_settings.cache_clear()

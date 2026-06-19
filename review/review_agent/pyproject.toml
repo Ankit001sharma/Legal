@@ -26,6 +26,9 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: requires Postgres pgvector",
+]
 
 [build-system]
 requires = ["setuptools>=73.0.0", "wheel"]

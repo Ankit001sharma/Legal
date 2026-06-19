@@ -39,12 +39,23 @@ def test_capture_matter_from_request(session_service: SessionService):
     request = AgentRequest(
         query="review",
         contract_text="Contract body",
+        contract_document_id="550e8400-e29b-41d4-a716-446655440000",
         policies=[PolicyInput(title="P", text="Policy body")],
         contract_title="MSA",
     )
     session_service.capture_matter_from_request(state, request)
     assert state.matter.contract_text == "Contract body"
+    assert state.matter.contract_document_id == "550e8400-e29b-41d4-a716-446655440000"
     assert len(state.matter.policies) == 1
+
+
+def test_merge_matter_contract_document_id(session_service: SessionService):
+    state = session_service.load_or_create("t1", "demo")
+    state.matter.contract_document_id = "550e8400-e29b-41d4-a716-446655440000"
+
+    request = AgentRequest(query="follow up")
+    enriched = session_service.enrich_request(request, state)
+    assert enriched.contract_document_id == "550e8400-e29b-41d4-a716-446655440000"
 
 
 def test_merge_matter_into_request(session_service: SessionService):

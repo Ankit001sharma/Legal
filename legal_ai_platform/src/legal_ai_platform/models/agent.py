@@ -48,6 +48,10 @@ class AgentRequest(BaseModel):
         default=None,
         description="Plain contract text for compliance review",
     )
+    contract_document_id: str | None = Field(
+        default=None,
+        description="Pre-synced contract UUID in document-mcp (prod path)",
+    )
     contract_title: str | None = None
     policies: list[PolicyInput] | None = None
     contract_type: str | None = None
@@ -69,6 +73,8 @@ class AgentRequest(BaseModel):
         merged = dict(self.context)
         if self.contract_text is not None:
             merged["contract_text"] = self.contract_text
+        if self.contract_document_id is not None:
+            merged["contract_document_id"] = self.contract_document_id
         if self.contract_title is not None:
             merged["contract_title"] = self.contract_title
         if self.policies is not None:

@@ -212,11 +212,7 @@ async def route_contract(
     topic_hints = load_routing_topic_hints()
 
     tenant_titles: list[str] = []
-    if (
-        client is not None
-        and tenant_id
-        and settings.review_policy_source == "tenant_auto"
-    ):
+    if client is not None and tenant_id:
         tenant_titles = await fetch_tenant_section_titles(client, tenant_id)
 
     if settings.contract_routing_mode == "lexical":

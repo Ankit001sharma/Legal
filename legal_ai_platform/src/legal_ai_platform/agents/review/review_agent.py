@@ -10,6 +10,7 @@ from legal_ai_platform.mcp.retrieval_client import RetrievalMCPClient
 from legal_ai_platform.models.agent import AgentRequest, AgentResponse
 from legal_ai_platform.observability.hooks import HookRegistry
 from review_agent.graph.review_graph import run_review
+from review_agent.services.review_preflight import ReviewPreflightError
 
 
 class ReviewAgent(BaseAgent):
@@ -30,6 +31,7 @@ class ReviewAgent(BaseAgent):
     async def execute(self, request: AgentRequest) -> AgentResponse:
         """Run review using contract_text + policies from the unified request envelope."""
         context = request.effective_context()
+        contract_document_id = request.contract_document_id or context.get("contract_document_id")
         contract_text = (context.get("contract_text") or request.query or "").strip()
         policies = context.get("policies") or []
         session_block = context.get("session") or {}
@@ -45,6 +47,9 @@ class ReviewAgent(BaseAgent):
                 client=self._document_client,  # type: ignore[arg-type]
                 tenant_id=request.tenant_id or "default",
                 contract_text=str(contract_text),
+                contract_document_id=(
+                    str(contract_document_id) if contract_document_id else None
+                ),
                 contract_title=context.get("contract_title", "Contract"),
                 policy_texts=policies,
                 policy_document_ids=context.get("policy_document_ids"),
@@ -72,6 +77,7 @@ class ReviewAgent(BaseAgent):
                 output=report.summary_markdown,
                 artifacts={
                     "report": report.model_dump(mode="json"),
+                    "audit": report.metadata.get("artifact"),
                     "memory_saved": result.get("memory_saved", False),
                     "memory_context": result.get("memory_context", ""),
                 },
@@ -84,6 +90,14 @@ class ReviewAgent(BaseAgent):
                         "memory_hits": len(result.get("memory_hits") or []),
                     }
                 ],
+            )
+        except ReviewPreflightError as exc:
+            return AgentResponse(
+                agent=self.agent_type,
+                task_type="review",
+                success=False,
+                error=f"preflight failed: {exc}",
+                thread_id=request.thread_id,
             )
         except Exception as exc:  # noqa: BLE001
             return AgentResponse(

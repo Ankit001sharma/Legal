@@ -54,6 +54,12 @@ class DocumentStore(Protocol):
 
     def get_policy_by_ref(self, tenant_id: str, policy_ref: str) -> PolicyRegistryRecord | None: ...
 
+    def get_policy_registry_by_document_id(
+        self, tenant_id: str, document_id: UUID
+    ) -> PolicyRegistryRecord | None: ...
+
+    def tombstone_policy_by_ref(self, tenant_id: str, policy_ref: str) -> PolicyRegistryRecord | None: ...
+
     def list_policy_registry(
         self,
         tenant_id: str,

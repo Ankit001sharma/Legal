@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from uuid import UUID
+from typing import Any
 
 from document_core.schemas.chunk import DocumentKind, SearchRequest
 
@@ -19,12 +19,16 @@ async def discover_policies_from_topics(
     contract_type: str | None,
     policy_type: str | None,
     settings: ReviewSettings,
-) -> tuple[list[DiscoveredPolicy], list[str]]:
+) -> tuple[list[DiscoveredPolicy], list[str], dict[str, Any]]:
     """Search tenant policy index per topic; dedupe and rank by best score."""
     warnings: list[str] = []
     if not topics:
         warnings.append("No routing topics provided; policy discovery skipped.")
-        return [], warnings
+        return [], warnings, {
+            "discovery_total_ranked": 0,
+            "discovery_returned": 0,
+            "discovery_capped": False,
+        }
 
     aggregated: dict[str, DiscoveredPolicy] = {}
 
@@ -74,7 +78,23 @@ async def discover_policies_from_topics(
                 )
 
     ranked = sorted(aggregated.values(), key=lambda p: p.match_score, reverse=True)
-    capped = ranked[: settings.discovery_max_policies]
+    cap = settings.discovery_max_policies
+    if cap <= 0:
+        capped = ranked
+    else:
+        capped = ranked[:cap]
+        if settings.discovery_warn_on_cap and len(ranked) > len(capped):
+            warnings.append(
+                f"Policy discovery capped at {cap}; "
+                f"{len(ranked) - len(capped)} policy(s) omitted "
+                "(raise DISCOVERY_MAX_POLICIES or set 0 for unlimited)."
+            )
+
+    discovery_meta = {
+        "discovery_total_ranked": len(ranked),
+        "discovery_returned": len(capped),
+        "discovery_capped": len(ranked) > len(capped),
+    }
 
     if not capped:
         warnings.append(
@@ -82,7 +102,7 @@ async def discover_policies_from_topics(
             "Ensure playbooks are indexed in the document store."
         )
 
-    return capped, warnings
+    return capped, warnings, discovery_meta
 
 
 def discovered_to_indexed_entries(policies: list[DiscoveredPolicy]) -> list[dict]:

@@ -1,8 +1,8 @@
 # Phase 10 — Section-First Review + High-Recall Policy Retrieval
 
 **Plan ID:** `DR-PHASE-10`  
-**Status:** Implemented (v1 — `final_gap_verify` pass-through; reranker no-op)  
-**Principle:** Fix **recall** (retrieval) and **anchor** (contract-section-first review). Keep storage, ingest, grounding, Java sync. Add new graph mode behind env flag — legacy path unchanged.  
+**Status:** Implemented — section-first pipeline (see [PHASE10_PRODUCTION_UNIFIED_IMPL_PLAN.md](./PHASE10_PRODUCTION_UNIFIED_IMPL_PLAN.md))  
+**Principle:** Fix **recall** (retrieval) and **anchor** (contract-section-first review). Keep storage, ingest, grounding, Java sync.  
 **Depends on:** Phase 7 (indexed policies), document-mcp pgvector hybrid search, existing `contract_parser` + `clause_detection`
 
 ---
@@ -419,18 +419,18 @@ POLICY_SEARCH_TOP_K=20             # recall phase only; final capped by reranker
 
 ### 10A
 
-- [ ] Union retrieval finds policy chunk missed by dense-only (test proves)  
-- [ ] Categories in metadata filter policy docs correctly  
-- [ ] Per-section retrieval bundle stored with ≥3 path provenance in meta  
+- [x] Union retrieval finds policy chunk missed by dense-only (test proves)  
+- [x] Categories in metadata filter policy docs correctly  
+- [x] Per-section retrieval bundle stored with ≥3 path provenance in meta  
 
 ### 10B
 
-- [ ] Full section text sent to compare LLM (no summary field in pipeline)  
-- [ ] Batch 2 sections ≈ half LLM calls vs batch 1  
-- [ ] Findings include `section_id` + verified quotes after grounding  
-- [ ] Sections with no policy hit appear in final gap pass / report warnings  
-- [ ] `REVIEW_PIPELINE_MODE=legacy` — all existing tests pass  
-- [ ] Contract/policy storage path unchanged (`ingest_document`, `list_sections`)  
+- [x] Full section text sent to compare LLM (no summary field in pipeline)  
+- [x] Batch 2 sections ≈ half LLM calls vs batch 1  
+- [x] Findings include `section_id` + verified quotes after grounding  
+- [x] Sections with no policy hit appear in final gap pass / report warnings  
+- [x] Single section-first pipeline (legacy removed)  
+- [x] Contract/policy storage path unchanged (`ingest_document`, `list_sections`)  
 
 ---
 

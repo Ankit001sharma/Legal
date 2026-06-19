@@ -7,14 +7,14 @@ import logging
 import httpx
 
 from document_core.schemas.chunk import DocumentKind, IngestRequest, IngestResult, StructureConfidence
-from document_core.schemas.registry import SyncPolicyFromCatalogRequest
+from document_core.schemas.registry import RegisterPolicyRequest, SyncPolicyFromCatalogRequest
+from document_core.schemas.taxonomy import normalize_categories
 from document_core.services.ingest import ingest_document
 from document_core.services.registry import (
     get_policy_by_ref,
     register_policy,
     stable_policy_document_id,
 )
-from document_core.schemas.registry import RegisterPolicyRequest
 from document_core.store.memory_store import get_store
 from document_core.store.protocol import DocumentStore
 
@@ -138,6 +138,7 @@ async def sync_policy_from_catalog(
         "policy_title": payload.title,
         **payload.metadata,
     }
+    categories = normalize_categories(list(payload.metadata.get("categories") or []))
     try:
         result = await ingest_document(
             IngestRequest(
@@ -148,6 +149,7 @@ async def sync_policy_from_catalog(
                 text=payload.text,
                 policy_type=payload.policy_type,
                 applies_to_contract_types=payload.applies_to_contract_types,
+                categories=categories,
                 metadata=meta,
             ),
             store=doc_store,

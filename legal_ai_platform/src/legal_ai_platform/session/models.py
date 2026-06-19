@@ -26,6 +26,7 @@ class MatterSnapshot(BaseModel):
     """Cross-agent handoff: contract, policies, last review report."""
 
     contract_text: str | None = None
+    contract_document_id: str | None = None
     contract_title: str | None = None
     policies: list[dict[str, Any]] = Field(default_factory=list)
     contract_type: str | None = None
