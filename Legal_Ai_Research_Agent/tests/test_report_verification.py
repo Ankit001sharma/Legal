@@ -212,7 +212,7 @@ def test_route_after_bootstrap_fast_mode_skips_supervisor():
                 for i in range(3)
             ],
         )
-        assert route_after_bootstrap(state) == "final_report_generation"
+        assert route_after_bootstrap(state) == "enrich_sources"
 
 
 def test_route_after_bootstrap_falls_back_to_supervisor_without_fetches():

@@ -951,6 +951,10 @@ Use these labels verbatim — NEVER write [1] alone without the source-type pref
 {case_digest}
 </Case Digest>
 
+<Procedural Timeline Hints — build Case Timeline from these>
+{timeline_digest}
+</Procedural Timeline Hints>
+
 <Reviewer Feedback>
 If this is a revision, a reviewer flagged the problems below. You MUST fix every one of them in this draft - remove or correct any unsupported claim or citation, and never replace a removed citation with an invented one. If this is the first draft, there is no feedback yet.
 {verification_feedback}
@@ -966,8 +970,9 @@ Before drafting a single sentence of Discussion or Table of Authorities, perform
 3. For every statute section you plan to quote, verify the section text appears verbatim in the Findings. If not, do NOT quote it.
 4. **FOR CRIMINAL MATTERS**: Verify that BOTH old code and new code sections appear in the Findings with proper citations. Do NOT cite one without the other (unless the offence date clearly falls under only one code).
 5. For any proposition where the Findings provide no supporting authority: write exactly — "The retrieved sources did not establish [point]. Independent verification required." Do NOT fill the gap from memory or training data.
-6. SNIPPET ONLY sources in the registry ARE citable — cite them using their [Label:n] token but always append "(snippet only — full text not retrieved; independent verification recommended)". NEVER omit a SNIPPET ONLY source just because it was not fully fetched. 0 citations is far worse than flagged citations.
-7. If the Findings are sparse, produce a shorter but fully grounded memo and cite ALL available sources (FETCHED and SNIPPET ONLY). A memo with three flagged citations is better than one with zero.
+6. For FETCHED sources, cite using the exact [Label:n] token with NO snippet-only disclaimer. Only append "(snippet only — unverified)" when the registry explicitly marks SNIPPET ONLY.
+7. If the Findings are sparse, produce a shorter but fully grounded memo and cite ALL available sources. A memo with flagged citations is better than one with zero.
+8. **ABSOLUTE BAN**: Do NOT include a "Confidence gap", "Verification Notes", or self-critical warning section in the memo body. Fix uncertainty by citing the retrieved sources directly — never tell the reader the memo is unreliable when sources support the answer.
 
 ZERO TOLERANCE: A fabricated case citation or invented section number is worse than a gap. But deliberately citing ZERO sources when the registry has entries is also a failure — cite what was retrieved, flag what was not fully verified.
 </MANDATORY CITATION PRE-FLIGHT CHECK>
@@ -1002,6 +1007,7 @@ Give the immediate answer with a confidence level:
 - **Likely** [Label:n] — when Findings support the answer but rely on partial excerpts or secondary sources.
 - **Unclear / unsettled** — ONLY when Findings EXPLICITLY say NOT FOUND for every relevant authority after exhaustive search, OR when two FETCHED binding judgments of equal rank directly contradict each other with no later resolution. You MUST name the conflicting cases.
 - **ABSOLUTE BAN**: Never hedge when any fetched source is on point. After ≥ 2 primary sources, the answer MUST be: "Yes / No / Likely yes [Label:n] / Likely no [Label:n]." Never write "no cases found" when the Source Registry has entries.
+- **ABSOLUTE BAN**: Never add a "Confidence gap" warning or meta-commentary about source quality in the memo.
 
 Start with a one-sentence direct conclusion (Yes / No / Likely yes / Likely no), then explain in 2–3 sentences.
 
@@ -1015,7 +1021,29 @@ Start with a one-sentence direct conclusion (Yes / No / Likely yes / Likely no),
 | [Indian Kanoon:n] | [Case Name, Citation, Year](indiankanoon.org URL) | ✅ fetched |
 | [Indian Kanoon:n] | [Case Name](URL) | ⚠️ snippet only |
 
-List EVERY source in the Permitted Source Registry using the exact [Label:n] token shown in the registry. ✅ fetched = FETCHED source (full text); ⚠️ snippet only = SNIPPET ONLY source. Make the authority names clickable markdown links to their URLs.
+List EVERY source in the Permitted Source Registry using the exact [Label:n] token shown in the registry. ✅ fetched = FETCHED source (full text); ⚠️ snippet only = SNIPPET ONLY source. Make every authority name a **clickable markdown link** to its full URL: `[Case Name](URL)`.
+
+---
+
+## Case Timeline
+
+MANDATORY for criminal, investigative, or fact-specific matters. Build chronologically from retrieved procedural documents (FIR, bail orders, chargesheet, court orders). Use the Procedural Timeline Hints above — verify dates against Findings.
+
+| Milestone | Date (if known) | Details | Source |
+|---|---|---|---|
+| **Incident** | [date or "Not documented"] | [1–2 sentences] | [Label:n] |
+| **FIR** | | | [Label:n] |
+| **Arrest** | | | [Label:n] |
+| **Bail** | | | [Label:n] |
+| **Chargesheet** | | | [Label:n] |
+| **Trial** | | | [Label:n] |
+| **Appeal** | | | [Label:n] |
+
+Rules:
+- Include ALL seven milestones as rows (write "Not documented in retrieved sources" if absent from Findings).
+- Every populated cell with a legal fact MUST cite [Label:n] immediately.
+- Do NOT invent dates — use only dates appearing verbatim in Findings or user brief.
+- For chargesheet rows, cite the actual chargesheet/FIR/order document when retrieved; search Findings for "charge sheet", "final report", "CrPC 173", "BNSS".
 
 ---
 
