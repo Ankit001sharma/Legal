@@ -1,4 +1,4 @@
-"""Local persistence for Streamlit chat sessions."""
+"""Local persistence for Streamlit chat sessions (scoped per tenant/user)."""
 
 from __future__ import annotations
 
@@ -31,17 +31,26 @@ def _parse_iso(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def _ensure_dir() -> Path:
-    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    return HISTORY_DIR
+def _scope_dir(tenant_id: str | None, user_id: str) -> Path:
+    root = HISTORY_DIR
+    if tenant_id is None:
+        path = root / "platform" / user_id
+    else:
+        path = root / "tenants" / tenant_id / "users" / user_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
-def _chat_path(chat_id: str) -> Path:
-    return _ensure_dir() / f"{chat_id}.json"
+def _chat_path(chat_id: str, *, tenant_id: str | None, user_id: str) -> Path:
+    return _scope_dir(tenant_id, user_id) / f"{chat_id}.json"
 
 
-def _read_index() -> list[dict[str, Any]]:
-    path = _ensure_dir() / INDEX_FILE
+def _index_path(*, tenant_id: str | None, user_id: str) -> Path:
+    return _scope_dir(tenant_id, user_id) / INDEX_FILE
+
+
+def _read_index(*, tenant_id: str | None, user_id: str) -> list[dict[str, Any]]:
+    path = _index_path(tenant_id=tenant_id, user_id=user_id)
     if not path.exists():
         return []
     try:
@@ -53,8 +62,8 @@ def _read_index() -> list[dict[str, Any]]:
     return data
 
 
-def _write_index(entries: list[dict[str, Any]]) -> None:
-    path = _ensure_dir() / INDEX_FILE
+def _write_index(entries: list[dict[str, Any]], *, tenant_id: str | None, user_id: str) -> None:
+    path = _index_path(tenant_id=tenant_id, user_id=user_id)
     path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
 
 
@@ -69,9 +78,9 @@ def derive_title(messages: list[dict[str, Any]]) -> str:
     return "New chat"
 
 
-def list_chats() -> list[dict[str, Any]]:
+def list_chats(*, tenant_id: str | None = None, user_id: str = "_unknown") -> list[dict[str, Any]]:
     """Return chat summaries sorted by most recently updated."""
-    entries = [entry for entry in _read_index() if entry.get("id")]
+    entries = [entry for entry in _read_index(tenant_id=tenant_id, user_id=user_id) if entry.get("id")]
     entries.sort(
         key=lambda item: item.get("updated_at") or item.get("created_at") or "",
         reverse=True,
@@ -79,10 +88,15 @@ def list_chats() -> list[dict[str, Any]]:
     return entries
 
 
-def load_chat(chat_id: str) -> dict[str, Any] | None:
-    path = _chat_path(chat_id)
+def load_chat(
+    chat_id: str,
+    *,
+    tenant_id: str | None = None,
+    user_id: str = "_unknown",
+) -> dict[str, Any] | None:
+    path = _chat_path(chat_id, tenant_id=tenant_id, user_id=user_id)
     if not path.exists():
-        _remove_from_index(chat_id)
+        _remove_from_index(chat_id, tenant_id=tenant_id, user_id=user_id)
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -93,16 +107,21 @@ def load_chat(chat_id: str) -> dict[str, Any] | None:
     return data
 
 
-def delete_chat(chat_id: str) -> None:
-    path = _chat_path(chat_id)
+def delete_chat(
+    chat_id: str,
+    *,
+    tenant_id: str | None = None,
+    user_id: str = "_unknown",
+) -> None:
+    path = _chat_path(chat_id, tenant_id=tenant_id, user_id=user_id)
     if path.exists():
         path.unlink()
-    _remove_from_index(chat_id)
+    _remove_from_index(chat_id, tenant_id=tenant_id, user_id=user_id)
 
 
-def _remove_from_index(chat_id: str) -> None:
-    entries = [entry for entry in _read_index() if entry.get("id") != chat_id]
-    _write_index(entries)
+def _remove_from_index(chat_id: str, *, tenant_id: str | None, user_id: str) -> None:
+    entries = [entry for entry in _read_index(tenant_id=tenant_id, user_id=user_id) if entry.get("id") != chat_id]
+    _write_index(entries, tenant_id=tenant_id, user_id=user_id)
 
 
 def save_chat(
@@ -113,6 +132,8 @@ def save_chat(
     research_mode: str,
     awaiting_input: bool = False,
     created_at: str | None = None,
+    tenant_id: str | None = None,
+    user_id: str = "_unknown",
 ) -> dict[str, Any]:
     """Persist a chat session and update the sidebar index."""
     now = _utc_now()
@@ -128,9 +149,15 @@ def save_chat(
         "awaiting_input": awaiting_input,
         "messages": messages,
     }
-    _chat_path(chat_id).write_text(json.dumps(record, indent=2), encoding="utf-8")
+    _chat_path(chat_id, tenant_id=tenant_id, user_id=user_id).write_text(
+        json.dumps(record, indent=2), encoding="utf-8"
+    )
 
-    entries = [entry for entry in _read_index() if entry.get("id") != chat_id]
+    entries = [
+        entry
+        for entry in _read_index(tenant_id=tenant_id, user_id=user_id)
+        if entry.get("id") != chat_id
+    ]
     entries.append(
         {
             "id": chat_id,
@@ -140,12 +167,38 @@ def save_chat(
         }
     )
     entries.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
-    _write_index(entries)
+    _write_index(entries, tenant_id=tenant_id, user_id=user_id)
     return record
 
 
 def new_chat_id() -> str:
     return str(uuid.uuid4())
+
+
+def update_chat_title(
+    chat_id: str,
+    title: str,
+    *,
+    tenant_id: str | None = None,
+    user_id: str = "_unknown",
+) -> None:
+    """Overwrite the title of an existing chat (used for LLM-generated titles)."""
+    chat = load_chat(chat_id, tenant_id=tenant_id, user_id=user_id)
+    if not chat:
+        return
+    clean = title.strip()[:TITLE_MAX_LEN]
+    if not clean:
+        return
+    chat["title"] = clean
+    _chat_path(chat_id, tenant_id=tenant_id, user_id=user_id).write_text(
+        json.dumps(chat, indent=2), encoding="utf-8"
+    )
+    entries = _read_index(tenant_id=tenant_id, user_id=user_id)
+    for entry in entries:
+        if entry.get("id") == chat_id:
+            entry["title"] = clean
+            break
+    _write_index(entries, tenant_id=tenant_id, user_id=user_id)
 
 
 def group_chats_by_period(chats: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:

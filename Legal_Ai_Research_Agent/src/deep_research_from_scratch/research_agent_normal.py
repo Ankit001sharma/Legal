@@ -20,9 +20,10 @@ Pipeline:
 
 from __future__ import annotations
 
+import asyncio
 import re
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, get_buffer_string
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
@@ -30,17 +31,23 @@ from deep_research_from_scratch.config import config as app_config
 from deep_research_from_scratch.model_config import (
     ainvoke_with_retry,
     get_chat_model,
+    invoke_with_retry,
 )
+from deep_research_from_scratch.memory_tools import get_session_id, record_transcript
 from deep_research_from_scratch.research_agent_scope import (
     compact_conversation,
     load_memory,
-    write_research_brief,
 )
+from deep_research_from_scratch.prompts import (
+    transform_messages_into_normal_research_topic_prompt,
+)
+from deep_research_from_scratch.state_scope import AgentInputState, AgentState, ResearchQuestion
 from deep_research_from_scratch.mcp_client import get_retrieval_client
 from deep_research_from_scratch.retrieval_bridge import (
     format_fetch_result,
     format_retrieval_results,
 )
+from deep_research_from_scratch.report_sources import linkify_citations
 from deep_research_from_scratch.source_registry import (
     RetrievedSource,
     citation_label,
@@ -52,12 +59,16 @@ from deep_research_from_scratch.source_registry import (
     source_from_fetch,
     sources_from_search_hits,
 )
-from deep_research_from_scratch.state_scope import AgentInputState, AgentState
+from deep_research_from_scratch.status_stream import emit_crawl_status, emit_search_status
 from deep_research_from_scratch.utils import get_today_str
 
 # ── LLM instances ──────────────────────────────────────────────────────────────
 
-_answer_model = get_chat_model("writer", max_tokens=4096)
+_answer_model = get_chat_model(
+    "writer",
+    max_tokens=app_config.NORMAL_ANSWER_MAX_TOKENS,
+)
+_brief_model = get_chat_model("reasoning", temperature=0.0)
 _search_model = get_chat_model("reasoning", temperature=0.0)
 
 # ── Prompts ────────────────────────────────────────────────────────────────────
@@ -66,44 +77,14 @@ _PLANNER_PROMPT = """\
 You are an Indian legal research assistant. Given the research brief below,
 generate exactly {max_queries} search queries covering DIFFERENT angles.
 
-MANDATORY query types — include ALL of these:
-1. STATUTORY TEXT query — fetch the actual statute section from indiacode.nic.in
-   Format: site:indiacode.nic.in "[Full Act Name]" [section keyword]
-   Example: site:indiacode.nic.in "Bharatiya Nyaya Sanhita" section 61 conspiracy
-   ⚑ This produces the authoritative statute page — the researcher will fetch it directly.
+Include these query types (prioritise the first three):
+1. STATUTORY TEXT — site:indiacode.nic.in "[Act Name]" [section keyword]
+2. LEADING SUPREME COURT precedent — site:indiankanoon.org [issue] supreme court
+3. RECENT judgment — site:indiankanoon.org [issue] supreme court OR high court 2023 2024
+4. (Optional) Broader fallback if fewer than {max_queries} distinct angles exist
 
-2. LEADING SUPREME COURT precedent query — target the most authoritative SC ruling
-   Format: site:indiankanoon.org [legal issue] supreme court [landmark OR leading]
-   Example: site:indiankanoon.org bail BNSS section 480 supreme court leading
-   ⚑ CRITICAL: This MUST return an actual judgment page (URL contains /doc/), NOT a search page.
-   If the first result is a search page, the researcher will follow the /doc/ links within it.
-
-3. RECENT SUPREME COURT query — post-2022 SC rulings showing current position
-   Format: site:indiankanoon.org [legal issue] supreme court 2023 2024
-   Example: site:indiankanoon.org anticipatory bail supreme court 2024
-
-4. RECENT HIGH COURT query — post-2022 judgments from relevant jurisdiction
-   Format: site:indiankanoon.org [issue] high court 2023 2024
-   Example: site:indiankanoon.org bail rejection grounds high court 2023 2024
-
-5. BROADER STATUTE search — adjacent Acts that may also apply
-   Example: site:indiacode.nic.in "Public Examinations" "Unfair Means" 2024
-
-6. DIRECT INDIANKANOON search — without site: restriction for reliability fallback
-   Format: [legal issue] India judgment [relevant year]
-
-JUDGMENT PAGES — NOT SEARCH PAGES (CRITICAL):
-- IndianKanoon judgment pages have URLs like: indiankanoon.org/doc/12345678/
-- IndianKanoon search pages have URLs like: indiankanoon.org/search/?formInput=...
-- The researcher can only extract FACTS, HOLDINGS, and RATIO from actual judgment pages.
-- Always prefer queries that land directly on /doc/ pages.
-
-SPECIAL RULES:
-- For EXAM FRAUD / NEET / paper leak matters: ALWAYS include a query for
-  "Public Examination (Prevention of Unfair Means) Act 2024 indiacode.nic.in"
-- For BNS matters: ALWAYS use BNS section numbers from indiacode.nic.in, NOT IPC numbers
-  (e.g. BNS §61 = conspiracy, NOT §120-B; BNS §111 = organised crime, NOT §386)
-- Use BROADER terminology — cover synonyms and alternate provision names.
+Prefer queries that land on /doc/ judgment pages or indiacode section pages, not search pages.
+For BNS matters use BNS section numbers from indiacode.nic.in, NOT IPC numbers.
 
 Research brief:
 {brief}
@@ -115,6 +96,10 @@ Return ONLY the queries, one per line, no numbering, no extra text.
 
 _ANSWER_PROMPT = """\
 You are an Indian legal research assistant writing a concise legal answer.
+
+LENGTH BUDGET: 400–800 words for the body (excluding the disclaimer). Shorter is better.
+This is Normal Research — a quick answer, NOT a full memorandum. Do not write long tables,
+multi-part ingredient lists, or exhaustive sub-sections.
 
 Research brief:
 {brief}
@@ -128,174 +113,74 @@ Source registry (the ONLY sources you may cite):
 Date: {date}
 {topic_checklist}
 ══════════════════════════════════════════
-CRITICAL RULES — NON-NEGOTIABLE
+CRITICAL RULES
 ══════════════════════════════════════════
 
-1. TOOLS FIRST — NO MEMORY ANSWERS
-   This answer must be grounded entirely in the retrieved sources above.
-   Do NOT answer from training data or general legal memory.
-   If the retrieved sources are insufficient to answer the question fully,
-   explicitly state: "The retrieved sources did not establish [point] —
-   independent verification required." Do NOT fill gaps from memory.
+1. Ground every claim in retrieved sources only — no training-data fill-ins.
+   If sources are insufficient, say so briefly.
 
-2. CITE EVERY CLAIM — PER SENTENCE
-   Every sentence that makes a legal claim, states a rule, names a statute
-   section, or draws a legal conclusion MUST end with at least one citation
-   from the Source Registry using the EXACT label shown (e.g. [Indian Kanoon:1],
-   [India Code:2]), placed immediately after the claim.
-   NEVER write [1] alone — always include the source-type prefix: [Indian Kanoon:1].
-   A sentence with a legal proposition but no citation is a critical failure.
-   NEVER bundle as [1,2] — each citation is its own separate [Label:n] token.
+2. Cite every legal claim with [Label:n] from the Source Registry (e.g. [Indian Kanoon:1]).
+   Never use bare [1]. Never bundle as [1,2].
 
-3. RELEVANT CASES ONLY — USE ACTUAL JUDGMENTS
-   Only cite a case if it DIRECTLY addresses the specific legal point being
-   made in that sentence. Sources that are search-result pages (URL contains
-   /search/ or ?formInput=) are NOT judgments — do not cite them as authority.
-   Only cite sources whose URL is an actual judgment page (/doc/) or statute page.
-   If no directly relevant case was retrieved, write "No directly applicable
-   case law found in retrieved sources."
+3. Cite only actual judgment (/doc/) or statute pages — not search-result pages.
 
-4. NO INVENTED CASE NAMES
-   Do NOT mention any case name unless that exact case (by name) appears in the
-   Source Registry above. If the registry has no case law, say so — do not
-   produce case names from training data.
+4. Do not invent case names. Mention a case only if it appears in the Source Registry.
 
-5. FULL TEXT OVER SNIPPETS
-   Where a source is marked *(fetched)*, prefer quoting or paraphrasing from
-   the fetched text. Where marked *(snippet only)*, note that this citation is
-   unverified: append "(snippet only — verify independently)" after the [n].
+5. Mark snippet-only sources with "(snippet only — verify independently)" after the citation.
 
-6. ACKNOWLEDGE AMBIGUITY
-   If the query could apply to multiple legal contexts (criminal vs civil,
-   pre-July 2024 IPC/CrPC vs post-July 2024 BNS/BNSS, different statutes),
-   open with one sentence identifying the interpretation you are answering and why.
+6. Prefix key propositions with **[ESTABLISHED]**, **[LIKELY]**, **[UNCERTAIN]**, or **[NOT FOUND]**.
 
-7. NO FOREIGN LAW WITHOUT INDIAN AUTHORITY
-   NEVER cite UK, US, Singapore, Australian, or any other foreign court judgment
-   as authority for Indian law. If a foreign concept is relevant, write:
-   "[FOREIGN LAW — no Indian authority retrieved for this point]"
-   The ONLY exception: if an Indian Supreme Court judgment explicitly adopts the
-   foreign principle, cite the Indian SC case — not the foreign court.
+7. If IPC/BNS choice matters, note the applicable code in one sentence.
 
-8. STRUCTURED CASE ANALYSIS — EXTRACT FACTS, ISSUE, HOLDING, RATIO
-   For EVERY case cited in the Analysis section, provide ALL FOUR elements:
-   - **Facts**: 1–2 sentences on the material facts of that case.
-   - **Issue**: The specific legal question the court decided.
-   - **Holding**: The court's actual decision — quote VERBATIM from the fetched source.
-     If the full text was not fetched, write: "Holding: [NOT IN FETCHED TEXT — verify at URL]"
-   - **Ratio**: The binding legal principle extracted from the holding.
-   Omit a case entirely rather than providing incomplete analysis.
-
-9. EXPLICIT CONFIDENCE MARKERS
-   Prefix EVERY legal proposition in the Analysis with one of:
-   - **[ESTABLISHED]** — a FETCHED primary source (statute or judgment) directly answers it.
-   - **[LIKELY]** — supported only by a snippet, indirect analogy, or partial fetch.
-   - **[UNCERTAIN]** — sources conflict, or the point was not clearly resolved.
-   - **[NOT FOUND]** — absent from ALL retrieved sources after search.
-   Example: "**[ESTABLISHED]** Section 480 BNSS governs regular bail [India Code:1]."
-   Example: "**[NOT FOUND]** No Supreme Court ruling on this specific point was retrieved."
+8. Topic checklist (if present) is for verification only — do NOT expand the answer to
+   cover every checkbox; mention only what retrieved sources support.
 
 ══════════════════════════════════════════
-OUTPUT FORMAT — USE THIS EXACT STRUCTURE
+OUTPUT FORMAT — USE THIS STRUCTURE ONLY
 ══════════════════════════════════════════
 
-# [Specific title — e.g. "Bail Under BNSS Section 480 After Arrest"]
+# [Short title]
 
-**Jurisdiction:** India (Supreme Court + [relevant High Court, if identifiable])
-**Applicable law:** [Primary Statute] ([year])
-**Offence date:** [before / on / after 1 July 2024 — omit if not a criminal matter]
+**Applicable law:** [Statute + section, if known]
 
----
+## Direct Answer
 
-## Topic Snapshot
+**[ESTABLISHED/LIKELY/UNCERTAIN/NOT FOUND]** [2–4 sentences answering the question directly,
+with inline citations.]
 
-[2–3 sentences: the exact legal issue, why it matters, and the core question. No citations here.]
+## Key Points
 
----
-
-## Brief Direct Answer
-
-Confidence: **[ESTABLISHED]** / **[LIKELY]** / **[UNCERTAIN]** (pick one — see Rule 9)
-
-[2–3 sentences: the immediate answer. Start with the confidence marker, one-phrase reason,
-and primary authority cited inline — e.g. "**[ESTABLISHED]** Yes, bail may be sought under
-Section 480 BNSS [India Code:1]; the Supreme Court has held that... [Indian Kanoon:2]."]
-
-If primary sources are missing: "**[NOT FOUND]** The retrieved sources do not contain a
-fetched primary authority to answer this question. Independent research is required."
-
----
-
-## Key Statutes & Authorities
-
-| Citation Label | Authority | Status |
-|---|---|---|
-| [India Code:n] | [Statute Section](URL) | ✅ fetched |
-| [Indian Kanoon:n] | [Case Name, Citation](URL) | ✅ fetched |
-| [Indian Kanoon:n] | [Case Name](URL) | ⚠️ snippet only |
-
-List every source from the Source Registry using the exact [Label:n] token.
-✅ fetched = full judgment/statute text retrieved; ⚠️ snippet only = excerpt only.
-Mark search-result pages (URL contains /search/ or ?formInput=) as ⚠️ NOT A JUDGMENT PAGE.
-
----
-
-## At a Glance
-
-| Aspect | Detail |
-|---|---|
-| **Governing law** | [Statute + exact section] |
-| **Core issue** | [One-line description] |
-| **Key consequence / penalty** | [If applicable] |
-| **Applicable code** | [IPC/CrPC or BNS/BNSS — if criminal] |
-| **Leading SC precedent** | [Case name + citation, or "None retrieved"] |
-
----
+- [3–5 bullet points max — statute rule, leading case holding, practical consequence]
+- [Each bullet with at least one citation where it states law]
 
 ## Analysis
 
-### [Issue or sub-question]
+[1–2 short paragraphs weaving statute and at most 2 cases. For each case: one sentence on
+the holding/ratio only — no Facts/Issue/Holding/Ratio sub-headings. Skip cases not in sources.]
 
-For EACH case cited here, provide the full structured analysis (Rule 8):
+## Practical Note
 
-**[Case Name]** [Citation] [Indian Kanoon:n]
-- **Facts**: [1–2 sentences on the material facts]
-- **Issue**: [The precise legal question the court resolved]
-- **Holding**: "[Verbatim quote from fetched text]" — or "[NOT IN FETCHED TEXT — verify at URL]"
-- **Ratio**: [The binding principle derived from the holding]
-- **Application**: [How this case's ratio applies to the research brief]
-
-[Narrative analysis weaving together statute text and case law. Every proposition prefixed
-with [ESTABLISHED] / [LIKELY] / [UNCERTAIN] / [NOT FOUND] per Rule 9. Every sentence with
-a legal claim MUST end with a [Label:n] citation.]
-
-### [Second issue, if any]
-
-[Repeat structured analysis]
-
----
-
-## Practical Takeaway
-
-[2–3 sentences of immediately actionable guidance grounded in retrieved sources only.]
-
-## Action Points
-
-1. [Concrete first step — name the specific provision and procedure]
-2. [Second step]
-3. [Third step]
-
----
+[1–2 sentences of actionable guidance, grounded in sources.]
 
 ## Suggested Follow-up Queries
 
-1. [Specific follow-up legal question]
-2. [Specific follow-up legal question]
-3. [Specific follow-up legal question]
+ALWAYS include as the last section before the disclaimer. Generate 3–4 specific,
+standalone follow-up questions that:
+- Are complete legal research questions (not "tell me more").
+- Address a gap, related issue, procedure, or adjacent angle from this answer.
+- Are short enough to fit on a button chip (under ~120 characters each).
 
----
+Format:
+1. [Specific question]
+2. [Specific question]
+3. [Specific question]
+4. [Optional fourth question]
 
 *This is AI-assisted legal research; consult a lawyer for advice.*
+
+Do NOT include: Topic Snapshot, At a Glance tables, Key Statutes tables, Action Points,
+or comparison tables. Sources are appended separately — do not duplicate a full source list
+in the body.
 """
 
 # ── Point 2: Judgment-page vs search-page detection ──────────────────────────
@@ -684,6 +569,8 @@ def _normal_deterministic_checks(
             r"|not established"
             r"|no clear (?:authority|answer|law)"
             r"|cannot be (?:definitively )?determined"
+            r"|conflicting views"
+            r"|no binding precedent"
             r")\b",
             content,
             re.IGNORECASE,
@@ -728,6 +615,38 @@ def _append_normal_caveats(content: str, det: dict) -> str:
     return content + "\n\n" + "\n".join(lines)
 
 
+# ── Node: write_normal_research_brief — concise brief for quick answers ────────
+
+
+def write_normal_research_brief(state: AgentState, config: RunnableConfig) -> dict:
+    """Transform the user query into a short research brief (not a full memo plan)."""
+    structured_output_model = _brief_model.with_structured_output(ResearchQuestion)
+
+    latest_user_text = ""
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage) and isinstance(msg.content, str):
+            latest_user_text = msg.content
+            break
+
+    response = invoke_with_retry(
+        structured_output_model,
+        [
+            HumanMessage(
+                content=transform_messages_into_normal_research_topic_prompt.format(
+                    messages=get_buffer_string(state.get("messages", [])),
+                    date=get_today_str(),
+                    current_query=latest_user_text or "(see conversation history)",
+                )
+            )
+        ],
+    )
+
+    return {
+        "research_brief": response.research_brief,
+        "supervisor_messages": [HumanMessage(content=f"{response.research_brief}.")],
+    }
+
+
 # ── Node: normal_researcher — 2-3 round search + fetch loop ───────────────────
 
 
@@ -768,6 +687,7 @@ async def normal_researcher(state: AgentState, config: RunnableConfig) -> dict:
     fetch_count = 0
 
     for query in queries:
+        emit_search_status(query)
         try:
             hits = await client.search(
                 query=query,
@@ -812,6 +732,7 @@ async def normal_researcher(state: AgentState, config: RunnableConfig) -> dict:
                 continue
             fetched_urls.add(url)
             fetch_count += 1
+            emit_crawl_status(url)
             try:
                 data = await client.fetch(url=url)
                 full_text = format_fetch_result(data, url)
@@ -878,6 +799,9 @@ async def generate_normal_answer(state: AgentState, config: RunnableConfig) -> d
             "4. Retry — DuckDuckGo rate-limiting can cause transient failures.\n\n"
             "*This is AI-assisted legal research; consult a lawyer for advice.*"
         )
+        await asyncio.to_thread(
+            record_transcript, get_session_id(config), "assistant", content, config
+        )
         return {"final_report": content, "messages": [AIMessage(content=content)]}
 
     # Hard stop 2 (Point 6) — refuse when NO primary-tier sources were fetched.
@@ -900,6 +824,9 @@ async def generate_normal_answer(state: AgentState, config: RunnableConfig) -> d
             "3. Try: `site:indiankanoon.org [legal issue] supreme court [year]`\n"
             "4. Ensure `INDIANKANOON_API_KEY` or `TAVILY_API_KEY` is configured.\n\n"
             "*This is AI-assisted legal research; consult a lawyer for advice.*"
+        )
+        await asyncio.to_thread(
+            record_transcript, get_session_id(config), "assistant", content, config
         )
         return {"final_report": content, "messages": [AIMessage(content=content)]}
 
@@ -968,6 +895,9 @@ async def generate_normal_answer(state: AgentState, config: RunnableConfig) -> d
     # Append a structured ### Sources section using the same [n] numbering as the
     # registry the LLM was given — so inline refs and footer entries always align.
     content = _append_sources_section(content, citable)
+    content = linkify_citations(content, citable)
+
+    record_transcript(get_session_id(config), "assistant", content, config)
 
     return {
         "final_report": content,
@@ -981,7 +911,7 @@ normal_researcher_builder = StateGraph(AgentState, input_schema=AgentInputState)
 
 normal_researcher_builder.add_node("load_memory", load_memory)
 normal_researcher_builder.add_node("compact_conversation", compact_conversation)
-normal_researcher_builder.add_node("write_research_brief", write_research_brief)
+normal_researcher_builder.add_node("write_research_brief", write_normal_research_brief)
 normal_researcher_builder.add_node("normal_researcher", normal_researcher)
 normal_researcher_builder.add_node("generate_normal_answer", generate_normal_answer)
 

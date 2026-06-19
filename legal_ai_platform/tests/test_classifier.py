@@ -8,9 +8,9 @@ def test_default_is_research():
     assert classifier.classify("What is Section 420 IPC?") == "research"
 
 
-def test_explicit_task_type_overrides():
+def test_unknown_query_falls_back_to_research():
     classifier = TaskClassifier()
-    assert classifier.classify("anything", explicit_task_type="contract") == "contract"
+    assert classifier.classify("anything") == "research"
 
 
 def test_contract_keyword():

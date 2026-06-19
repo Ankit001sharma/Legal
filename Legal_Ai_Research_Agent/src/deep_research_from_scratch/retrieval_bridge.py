@@ -17,16 +17,43 @@ from deep_research_from_scratch.source_registry import (
 )
 
 _tenant_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("tenant_id", default=None)
+_user_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("user_id", default=None)
+_role: contextvars.ContextVar[str | None] = contextvars.ContextVar("role", default=None)
+_auth_token: contextvars.ContextVar[str | None] = contextvars.ContextVar("auth_token", default=None)
 
 
-def set_request_context(*, tenant_id: str | None = None) -> None:
-    """Set per-request retrieval context (tenant_id for internal doc search)."""
+def set_request_context(
+    *,
+    tenant_id: str | None = None,
+    user_id: str | None = None,
+    role: str | None = None,
+    auth_token: str | None = None,
+) -> None:
+    """Set per-request retrieval and auth context."""
     _tenant_id.set(tenant_id)
+    if user_id is not None:
+        _user_id.set(user_id)
+    if role is not None:
+        _role.set(role)
+    if auth_token is not None:
+        _auth_token.set(auth_token)
 
 
 def get_tenant_id() -> str | None:
     """Return the tenant_id for the current request, if any."""
     return _tenant_id.get()
+
+
+def get_user_id() -> str | None:
+    return _user_id.get()
+
+
+def get_role() -> str | None:
+    return _role.get()
+
+
+def get_auth_token() -> str | None:
+    return _auth_token.get()
 
 
 def format_retrieval_results(results: list[dict[str, Any]]) -> str:

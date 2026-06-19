@@ -26,10 +26,19 @@ from pathlib import Path
 
 from typing_extensions import List
 
-# Serializes all memory/transcript file writes. LangGraph runs sync nodes in a
-# thread pool, so parallel research sub-agents can otherwise interleave or
-# corrupt the append-only JSONL and the MEMORY.md index.
-_write_lock = threading.Lock()
+# Per-path locks for file writes. Using one lock per file path prevents
+# parallel sub-agents writing the same file from interleaving, while allowing
+# unrelated sessions to write concurrently without blocking each other.
+_file_locks: dict[str, threading.Lock] = {}
+_file_locks_lock = threading.Lock()
+
+
+def _get_file_lock(path: str) -> threading.Lock:
+    """Return a per-path threading.Lock, creating it on first use."""
+    with _file_locks_lock:
+        if path not in _file_locks:
+            _file_locks[path] = threading.Lock()
+        return _file_locks[path]
 
 from langchain_core.messages import (
     HumanMessage,
@@ -44,6 +53,12 @@ from pydantic import BaseModel, Field
 
 # ===== CONSTANTS (ported from memdir.ts) =====
 from deep_research_from_scratch.config import config
+from deep_research_from_scratch.memory_namespace import (
+    MemoryNamespace,
+    apply_config_namespace,
+    get_active_namespace,
+    resolve_memory_paths,
+)
 
 ENTRYPOINT_NAME = "MEMORY.md"
 MAX_ENTRYPOINT_LINES = config.MAX_ENTRYPOINT_LINES
@@ -67,18 +82,20 @@ def get_memory_root() -> Path:
     return root
 
 
-def get_auto_mem_path() -> Path:
+def get_auto_mem_path(namespace: MemoryNamespace | None = None) -> Path:
     """Directory holding MEMORY.md and linked long-term memory files."""
-    path = get_memory_root() / "auto"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    ns = namespace or get_active_namespace()
+    paths = resolve_memory_paths(ns, memory_root=get_memory_root())
+    paths.auto_dir.mkdir(parents=True, exist_ok=True)
+    return paths.auto_dir
 
 
-def get_sessions_dir() -> Path:
+def get_sessions_dir(namespace: MemoryNamespace | None = None) -> Path:
     """Directory holding per-session JSONL transcripts."""
-    path = get_memory_root() / "sessions"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    ns = namespace or get_active_namespace()
+    paths = resolve_memory_paths(ns, memory_root=get_memory_root())
+    paths.sessions_dir.mkdir(parents=True, exist_ok=True)
+    return paths.sessions_dir
 
 
 # ===== SESSION ID RESOLUTION =====
@@ -111,7 +128,9 @@ def is_transcript_message(entry: dict) -> bool:
     return entry.get("type") in TRANSCRIPT_MESSAGE_TYPES
 
 
-def record_transcript(session_id: str, role: str, content: str) -> None:
+def record_transcript(
+    session_id: str, role: str, content: str, config: RunnableConfig | None = None
+) -> None:
     """Append a single message to the session's JSONL transcript.
 
     This is the file-based equivalent of ``recordTranscript`` -- an append-only
@@ -123,6 +142,8 @@ def record_transcript(session_id: str, role: str, content: str) -> None:
         role: Message role, e.g. ``"user"`` or ``"assistant"``.
         content: Message text content.
     """
+    if config is not None:
+        apply_config_namespace(config)
     entry = {
         "type": role if role in TRANSCRIPT_MESSAGE_TYPES else "user",
         "uuid": str(uuid.uuid4()),
@@ -133,7 +154,7 @@ def record_transcript(session_id: str, role: str, content: str) -> None:
     if not is_transcript_message(entry):
         return
     path = get_transcript_path(session_id)
-    with _write_lock:
+    with _get_file_lock(str(path)):
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
 
@@ -276,12 +297,14 @@ def build_memory_prompt(display_name: str = "auto memory", memory_dir: Path | No
     return "\n".join(lines)
 
 
-def load_memory_prompt() -> str:
+def load_memory_prompt(config: RunnableConfig | None = None) -> str:
     """Load the unified memory prompt for insertion into the system prompt.
 
     Port of ``loadMemoryPrompt`` -- call this inside a node and prepend the
     result to the system prompt so the agent always sees its memory index.
     """
+    if config is not None:
+        apply_config_namespace(config)
     return build_memory_prompt(display_name="auto memory", memory_dir=get_auto_mem_path())
 
 
@@ -296,7 +319,7 @@ def _append_index_pointer(memory_dir: Path, title: str, filename: str, hook: str
     entrypoint = memory_dir / ENTRYPOINT_NAME
     pointer = f"- [{title}]({filename}) - {hook}"
 
-    with _write_lock:
+    with _get_file_lock(str(entrypoint)):
         existing = entrypoint.read_text(encoding="utf-8") if entrypoint.exists() else ""
         lines = [ln for ln in existing.split("\n") if ln.strip()]
         # Replace an existing pointer to the same file, else append.
@@ -373,6 +396,8 @@ def get_conversation_memory(session_id: str, limit: int = 20, config: RunnableCo
         Formatted recent conversation history, or a note that none exists.
     """
     sid = session_id or get_session_id(config)
+    if config is not None:
+        apply_config_namespace(config)
     messages = load_transcript(sid)
     if not messages:
         return f"No conversation history for session '{sid}'."
@@ -403,6 +428,8 @@ def record_message(role: str, content: str, config: RunnableConfig = None) -> st
         Confirmation that the message was recorded.
     """
     sid = get_session_id(config)
+    if config is not None:
+        apply_config_namespace(config)
     record_transcript(sid, role, content)
     return f"Message recorded to session '{sid}'."
 
@@ -449,7 +476,7 @@ def record_compact_boundary(session_id: str, compacted_message_count: int) -> No
         "compactMetadata": {"compactedMessageCount": compacted_message_count},
     }
     path = get_transcript_path(session_id)
-    with _write_lock:
+    with _get_file_lock(str(path)):
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
 
@@ -586,7 +613,7 @@ def record_verification(session_id: str, result: dict) -> None:
         "verification": result,
     }
     path = get_sessions_dir() / f"{session_id}.verification.jsonl"
-    with _write_lock:
+    with _get_file_lock(str(path)):
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
@@ -620,7 +647,7 @@ def save_session_summary(session_id: str, summary: str, summarized_count: int) -
         "summarized_count": summarized_count,
         "updated_at": datetime.now().isoformat(),
     }
-    with _write_lock:
+    with _get_file_lock(str(path)):
         path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
@@ -640,6 +667,7 @@ def build_session_context(
     session_id: str,
     keep_recent: int = SESSION_KEEP_RECENT,
     threshold: int = SESSION_SUMMARY_THRESHOLD,
+    config: RunnableConfig | None = None,
 ) -> str:
     """Build bounded conversation context for a (possibly very long) session.
 
@@ -648,6 +676,8 @@ def build_session_context(
     backlog grows past ``threshold`` (so it is cheap on most turns). The full
     transcript stays on disk untouched, so nothing is ever lost.
     """
+    if config is not None:
+        apply_config_namespace(config)
     transcript = load_transcript(session_id)
     if not transcript:
         return "No prior conversation on record for this session."

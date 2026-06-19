@@ -123,15 +123,21 @@ class RetrievalMCPClient:
         return normalized
 
     async def _post(self, tool_path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        from deep_research_from_scratch.retrieval_bridge import get_auth_token
+
         url = f"{self.base_url}{tool_path}"
         last_error: Exception | None = None
+        headers: dict[str, str] = {}
+        token = get_auth_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
         for attempt in range(1, self.max_retries + 1):
             try:
                 async with httpx.AsyncClient(
                     timeout=httpx.Timeout(self.timeout_seconds)
                 ) as client:
-                    response = await client.post(url, json=payload)
+                    response = await client.post(url, json=payload, headers=headers)
                     response.raise_for_status()
                     return response.json()
             except Exception as exc:  # noqa: BLE001

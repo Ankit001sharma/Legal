@@ -11,6 +11,7 @@ import re
 
 from deep_research_from_scratch.config import config
 from deep_research_from_scratch.retrieval_bridge import run_fetch, run_search
+from deep_research_from_scratch.status_stream import emit_crawl_status, emit_search_status
 from deep_research_from_scratch.source_registry import (
     RetrievedSource,
     count_fetches,
@@ -204,6 +205,7 @@ def _collect_search_hits(
     seen_urls: set[str] = set()
 
     for query in queries:
+        emit_search_status(query)
         try:
             text, sources = run_search(query, results_per_query)
             search_blocks.append(f"--- Query: {query} ---\n{text}")
@@ -239,6 +241,7 @@ def _fetch_primary_sources(
         if not key or key in fetched_urls:
             continue
         fetched_urls.add(key)
+        emit_crawl_status(url)
         try:
             fetch_text, src = run_fetch(url)
             fetch_blocks.append(fetch_text)

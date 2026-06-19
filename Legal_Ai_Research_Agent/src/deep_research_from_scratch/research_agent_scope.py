@@ -79,7 +79,16 @@ def load_memory(state: AgentState, config: RunnableConfig) -> dict:
     """
     session_id = get_session_id(config)
     tenant_id = (config.get("configurable") or {}).get("tenant_id")
-    set_request_context(tenant_id=tenant_id)
+    user_id = (config.get("configurable") or {}).get("user_id")
+    role = (config.get("configurable") or {}).get("role")
+    auth_token = (config.get("configurable") or {}).get("auth_token")
+    apply_config_namespace(config)
+    set_request_context(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        role=role,
+        auth_token=auth_token,
+    )
     messages = state.get("messages", [])
 
     # The latest user message drives retrieval (built BEFORE we record it, so it
@@ -99,13 +108,13 @@ def load_memory(state: AgentState, config: RunnableConfig) -> dict:
 
     # 1. Long-term memory: index + cross-session facts relevant to this request
     #    (keyword today, semantic when a vector backend is configured).
-    memory_index = load_memory_prompt()
+    memory_index = load_memory_prompt(config)
     longterm_hits = backend.search_longterm(latest_user_text, k=5) if latest_user_text else []
     recalled = format_hits(longterm_hits, empty="No long-term memories matched this request.")
 
     # 2. Bounded conversation context: rolling summary of older turns + recent
     #    turns verbatim. Stays small regardless of how long the session gets.
-    session_ctx = build_session_context(session_id)
+    session_ctx = build_session_context(session_id, config=config)
 
     # 3. Other relevant earlier turns retrieved by the query (catches context
     #    that fell outside the recent window). Vector-ready via the backend seam.
@@ -126,7 +135,7 @@ def load_memory(state: AgentState, config: RunnableConfig) -> dict:
         content = getattr(last, "content", "")
         if isinstance(content, str) and content.strip():
             role = "user" if isinstance(last, HumanMessage) else "assistant"
-            record_transcript(session_id, role, content)
+            record_transcript(session_id, role, content, config=config)
 
     # Dedupe: drop any stale memory block injected on a previous turn so the
     # context does not accumulate duplicate memory blocks over a long thread.
@@ -160,10 +169,19 @@ def clarify_with_user(state: AgentState, config: RunnableConfig) -> Command[Lite
 
     structured_output_model = model.with_structured_output(SuggestDirections)
 
+    # Extract the latest human message so the prompt can identify the current query
+    # even when a long prior conversation is present.
+    latest_user_text = ""
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage) and isinstance(msg.content, str):
+            latest_user_text = msg.content
+            break
+
     response = structured_output_model.invoke([
         HumanMessage(content=suggest_directions_prompt.format(
             messages=get_buffer_string(messages=state["messages"]),
             date=get_today_str(),
+            current_query=latest_user_text or "(see conversation history)",
         ))
     ])
 
@@ -174,7 +192,7 @@ def clarify_with_user(state: AgentState, config: RunnableConfig) -> Command[Lite
             f"{i + 1}. {d}" for i, d in enumerate(response.research_directions)
         )
         text = f"{response.direction_context}\n\n{directions_list}"
-        record_transcript(session_id, "assistant", text)
+        record_transcript(session_id, "assistant", text, config=config)
         return Command(
             goto=END,
             update={
@@ -184,7 +202,7 @@ def clarify_with_user(state: AgentState, config: RunnableConfig) -> Command[Lite
         )
 
     if response.action == "ask_clarification":
-        record_transcript(session_id, "assistant", response.clarification_question)
+        record_transcript(session_id, "assistant", response.clarification_question, config=config)
         return Command(
             goto=END,
             update={
@@ -194,7 +212,7 @@ def clarify_with_user(state: AgentState, config: RunnableConfig) -> Command[Lite
         )
 
     # action == "proceed"
-    record_transcript(session_id, "assistant", response.verification)
+    record_transcript(session_id, "assistant", response.verification, config=config)
     return Command(
         goto="write_research_brief",
         update={
@@ -212,6 +230,14 @@ def write_research_brief(state: AgentState, config: RunnableConfig):
     # Set up structured output model
     structured_output_model = model.with_structured_output(ResearchQuestion)
 
+    # Extract the latest human message so the prompt can focus on the CURRENT
+    # query rather than defaulting to a prior session's research topic.
+    latest_user_text = ""
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage) and isinstance(msg.content, str):
+            latest_user_text = msg.content
+            break
+
     # Generate research brief from conversation history
     response = invoke_with_retry(
         structured_output_model,
@@ -220,13 +246,11 @@ def write_research_brief(state: AgentState, config: RunnableConfig):
                 content=transform_messages_into_research_topic_prompt.format(
                     messages=get_buffer_string(state.get("messages", [])),
                     date=get_today_str(),
+                    current_query=latest_user_text or "(see conversation history)",
                 )
             )
         ],
     )
-
-    # Persist the generated brief to the session transcript.
-    record_transcript(get_session_id(config), "assistant", response.research_brief)
 
     # Update state with generated research brief and pass it to the supervisor
     return {

@@ -181,13 +181,15 @@ class _Config:
 
         # ── Normal Research mode (lightweight) ────────────────────────────────
         # Max search queries issued by the normal researcher loop (2-3 rounds).
-        self.NORMAL_MAX_SEARCH_QUERIES: int = _int("NORMAL_MAX_SEARCH_QUERIES", 6)
+        self.NORMAL_MAX_SEARCH_QUERIES: int = _int("NORMAL_MAX_SEARCH_QUERIES", 4)
         # Max document fetches in the normal researcher loop.
-        self.NORMAL_MAX_FETCHES: int = _int("NORMAL_MAX_FETCHES", 8)
+        self.NORMAL_MAX_FETCHES: int = _int("NORMAL_MAX_FETCHES", 6)
         # Results requested per search query in normal mode.
-        self.NORMAL_RESULTS_PER_QUERY: int = _int("NORMAL_RESULTS_PER_QUERY", 8)
+        self.NORMAL_RESULTS_PER_QUERY: int = _int("NORMAL_RESULTS_PER_QUERY", 6)
         # Max chars of retrieved text passed to the normal answer writer.
-        self.NORMAL_FINDINGS_CHAR_BUDGET: int = _int("NORMAL_FINDINGS_CHAR_BUDGET", 30_000)
+        self.NORMAL_FINDINGS_CHAR_BUDGET: int = _int("NORMAL_FINDINGS_CHAR_BUDGET", 12_000)
+        # Max completion tokens for the normal answer writer (concise output).
+        self.NORMAL_ANSWER_MAX_TOKENS: int = _int("NORMAL_ANSWER_MAX_TOKENS", 1800)
         # Minimum fetched (full-text) sources before the writer is invoked.
         # When fewer than this many sources are fetched, a "SOURCES INSUFFICIENT" message is returned.
         self.NORMAL_MIN_FETCHED_SOURCES: int = _int("NORMAL_MIN_FETCHED_SOURCES", 2)

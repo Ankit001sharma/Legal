@@ -27,6 +27,16 @@ class PlatformSettings(BaseSettings):
     platform_host: str = "0.0.0.0"
     platform_port: int = 8080
     platform_log_level: str = "INFO"
+    # When true, serve over HTTPS with HTTP/2 via Hypercorn (requires TLS cert + key).
+    platform_http2: bool = False
+    platform_ssl_certfile: str = ""
+    platform_ssl_keyfile: str = ""
+    database_url: str = "sqlite:///./legal_ai_platform.db"
+    jwt_secret: str = "change-me-in-production"
+    jwt_expire_minutes: int = 60 * 24
+    auth_required: bool = True
+    dev_anonymous_user_id: str = "dev-anonymous"
+    dev_anonymous_tenant_id: str | None = "demo-tenant"
 
 
 @lru_cache

@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Protocol
 
+from deep_research_from_scratch.memory_namespace import get_active_namespace
 from deep_research_from_scratch.memory_tools import (
     ENTRYPOINT_NAME,
     get_auto_mem_path,
@@ -72,7 +73,8 @@ class FileMemoryBackend:
     def search_longterm(self, query: str, k: int = 5) -> List[MemoryHit]:
         terms = self._terms(query)
         hits: List[MemoryHit] = []
-        for md_file in sorted(get_auto_mem_path().glob("*.md")):
+        auto_dir = get_auto_mem_path(get_active_namespace())
+        for md_file in sorted(auto_dir.glob("*.md")):
             if md_file.name == ENTRYPOINT_NAME:
                 continue
             try:

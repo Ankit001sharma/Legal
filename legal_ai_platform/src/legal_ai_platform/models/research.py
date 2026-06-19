@@ -28,8 +28,10 @@ class ResearchRequest(BaseModel):
     mode: ResearchMode = ResearchMode.NORMAL
     context: dict[str, Any] = Field(default_factory=dict)
     tenant_id: str | None = None
+    user_id: str | None = None
+    role: str | None = None
     max_results: int = Field(default=10, ge=1, le=100)
-    thread_id: str | None = None
+    session_id: str
 
 
 class ResearchResponse(BaseModel):

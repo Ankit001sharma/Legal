@@ -11,7 +11,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from mcp.retrieval_server.citation_service import CitationService
+from mcp.retrieval_server.auth import authorize_tool_request
 from mcp.retrieval_server.config import SERVICE_NAME, VERSION, get_settings
 from mcp.retrieval_server.fetch_service import FetchService
 from mcp.retrieval_server.ingest_service import IngestService
@@ -105,6 +105,7 @@ async def health() -> HealthResponse:
 @app.post("/tools/search", response_model=SearchResponse)
 async def search_tool(request: Request, body: SearchRequest) -> SearchResponse:
     """Unified legal research search across multiple sources."""
+    authorize_tool_request(request, body.tenant_id)
     request_id = _new_request_id()
     bind_request(request_id)
     start = time.perf_counter()
@@ -167,6 +168,7 @@ async def fetch_and_extract_tool(
     request: Request, body: FetchRequest
 ) -> FetchResponse:
     """Fetch full document and extract sections."""
+    authorize_tool_request(request, body.tenant_id)
     request_id = _new_request_id()
     bind_request(request_id)
     start = time.perf_counter()
@@ -214,6 +216,7 @@ async def semantic_search_tool(
     request: Request, body: SemanticSearchRequest
 ) -> SemanticSearchResponse:
     """Semantic vector search — Phase 1 stub."""
+    authorize_tool_request(request, body.tenant_id)
     request_id = _new_request_id()
     bind_request(request_id)
     start = time.perf_counter()
@@ -263,6 +266,7 @@ async def citation_graph_tool(
     request: Request, body: CitationGraphRequest
 ) -> CitationGraphResponse:
     """Citation graph traversal — Phase 1 stub."""
+    authorize_tool_request(request, None)
     request_id = _new_request_id()
     bind_request(request_id)
     start = time.perf_counter()
@@ -312,6 +316,7 @@ async def ingest_internal_tool(
     request: Request, body: IngestInternalRequest
 ) -> IngestInternalResponse:
     """Ingest a tenant-scoped internal document into the index."""
+    authorize_tool_request(request, body.tenant_id)
     request_id = _new_request_id()
     bind_request(request_id)
     start = time.perf_counter()
@@ -374,6 +379,7 @@ async def memory_save_tool(
     request: Request, body: MemorySaveRequest
 ) -> MemorySaveResponse:
     """Persist a durable, verified legal fact to long-term memory."""
+    authorize_tool_request(request, None)
     request_id = _new_request_id()
     bind_request(request_id)
     start = time.perf_counter()
@@ -418,6 +424,7 @@ async def memory_search_tool(
     request: Request, body: MemorySearchRequest
 ) -> MemorySearchResponse:
     """Search long-term memory for relevant saved legal facts."""
+    authorize_tool_request(request, None)
     request_id = _new_request_id()
     bind_request(request_id)
     start = time.perf_counter()

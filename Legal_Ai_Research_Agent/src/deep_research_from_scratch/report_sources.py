@@ -26,8 +26,20 @@ def build_source_index_map(sources: list[RetrievedSource]) -> dict[int, Retrieve
     return {index: src for index, src in enumerate(citable, 1)}
 
 
+_AUTHORITY_TIER_LABEL: dict[str, str] = {
+    "primary": "Primary authority",
+    "secondary": "Secondary source",
+    "unknown": "Source",
+}
+
+
 def linkify_citations(report: str, sources: list[RetrievedSource]) -> str:
-    """Make inline [Label:n] tokens clickable markdown links to their source URLs."""
+    """Replace inline [Label:n] tokens with HTML anchor tags that carry hover tooltips.
+
+    Tooltips show: source title · authority tier · fetch status.
+    Lines inside the ``## Table of Authorities`` block are left unchanged because
+    they already carry fully-formed markdown links.
+    """
     if not report:
         return report
 
@@ -39,39 +51,41 @@ def linkify_citations(report: str, sources: list[RetrievedSource]) -> str:
         label = match.group(1)
         number = int(match.group(2))
         src = index_map.get(number)
-        url = (src.url or "").strip() if src else ""
-        if url.startswith("http"):
-            return f"[{label}]({url})"
-        return match.group(0)
+        if src is None:
+            return match.group(0)
+        url = (src.url or "").strip()
+        if not url.startswith("http"):
+            return match.group(0)
 
-    linked = re.sub(
-        r"\[((?:[A-Za-z][A-Za-z\s]*:\s*)?(\d+))\](?!\()",
-        _replace,
-        report,
-    )
+        title = (src.title or "Source").strip()[:100]
+        tier = _AUTHORITY_TIER_LABEL.get(src.authority_tier or "unknown", "Source")
+        status = "Full text retrieved" if src.fetched else "Snippet only"
+        # Escape quotes in tooltip so the HTML attribute stays valid
+        tooltip = f"{title} · {tier} · {status}".replace('"', "&quot;")
+        return (
+            f'<a href="{url}" title="{tooltip}" '
+            f'target="_blank" rel="noopener noreferrer">[{label}]</a>'
+        )
 
-    # Link bare URLs in ### Sources lines: [n] Title: URL -> [n] [Title](URL)
-    lines: list[str] = []
-    in_sources = False
-    for line in linked.splitlines():
+    _CITATION_RE = re.compile(r"\[((?:[A-Za-z][A-Za-z\s]*:\s*)?(\d+))\](?!\()")
+
+    result_lines: list[str] = []
+    in_authorities = False
+    for line in report.splitlines():
         stripped = line.strip()
-        if stripped.lower().startswith("### sources"):
-            in_sources = True
-            lines.append(line)
+        # Enter/exit the Table of Authorities block
+        if re.match(r"^##\s+Table of Authorities", stripped, re.IGNORECASE):
+            in_authorities = True
+            result_lines.append(line)
             continue
-        if in_sources and stripped.startswith("## ") and not stripped.lower().startswith("## table"):
-            in_sources = False
-        if in_sources:
-            source_match = re.match(
-                r"^\[(\d+)\]\s+(.+?):\s+(https?://\S+)\s*$",
-                stripped,
-            )
-            if source_match:
-                num, title, url = source_match.groups()
-                lines.append(f"[{num}] [{title.strip()}]({url.rstrip(').,')})")
-                continue
-        lines.append(line)
-    return "\n".join(lines)
+        if in_authorities and re.match(r"^##\s+\S", stripped) and not re.match(
+            r"^##\s+Table of Authorities", stripped, re.IGNORECASE
+        ):
+            in_authorities = False
+        # Don't touch lines inside the authorities table
+        result_lines.append(line if in_authorities else _CITATION_RE.sub(_replace, line))
+
+    return "\n".join(result_lines)
 
 
 def build_procedural_timeline_digest(
@@ -152,6 +166,12 @@ def ensure_sources_section(report: str, sources: list[RetrievedSource]) -> str:
         return report
 
     text = report or ""
+    text = re.sub(
+        r"\n## Table of Authorities\s*[\s\S]*?(?=\n## |\Z)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(
         r"\n### Sources\s*[\s\S]*?(?=\n## |\Z)",
         "",

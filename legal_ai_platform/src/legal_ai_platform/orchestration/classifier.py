@@ -25,14 +25,8 @@ class TaskClassifier:
 
     DEFAULT_TASK_TYPE = "research"
 
-    def classify(self, query: str, explicit_task_type: str | None = None) -> str:
-        """Return the task type for a query.
-
-        If ``explicit_task_type`` is provided it takes precedence.
-        """
-        if explicit_task_type:
-            return explicit_task_type
-
+    def classify(self, query: str) -> str:
+        """Return the task type for a query using keyword rules."""
         for task_type, pattern in self._RULES:
             if pattern.search(query):
                 return task_type

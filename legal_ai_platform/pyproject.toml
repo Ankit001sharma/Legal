@@ -5,11 +5,17 @@ description = "Legal AI Platform — API Gateway, Query Orchestrator, and Agent 
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "fastapi>=0.110.0",
+    "hypercorn>=0.16.0",
+    "cryptography>=42.0.0",
     "uvicorn[standard]>=0.27.0",
     "httpx>=0.26.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "python-dotenv>=1.0.0",
+    "PyJWT>=2.8.0",
+    "passlib[bcrypt]>=1.7.4",
+    "sqlalchemy>=2.0.0",
+    "email-validator>=2.0.0",
     "deep_research_from_scratch @ file:../Legal_Ai_Research_Agent",
 ]
 
@@ -27,6 +33,9 @@ testpaths = ["tests"]
 [build-system]
 requires = ["setuptools>=73.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project.scripts]
+legal-ai-gateway = "legal_ai_platform.gateway.server:main"
 
 [tool.setuptools]
 packages = ["legal_ai_platform"]

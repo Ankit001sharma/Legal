@@ -34,3 +34,6 @@ Thumbs.db
 
 # LangGraph / agent runtime
 .langgraph_api/
+
+# Dev TLS certs for HTTP/2 gateway
+legal_ai_platform/certs/

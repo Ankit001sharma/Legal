@@ -1,6 +1,7 @@
 """Shared domain models."""
 
 from legal_ai_platform.models.agent import AgentRequest, AgentResponse
+from legal_ai_platform.models.task_types import TaskType
 from legal_ai_platform.models.research import ResearchMode, ResearchRequest, ResearchResponse
 from legal_ai_platform.models.retrieval import (
     CitationGraphResult,
@@ -11,6 +12,7 @@ from legal_ai_platform.models.retrieval import (
 __all__ = [
     "AgentRequest",
     "AgentResponse",
+    "TaskType",
     "CitationGraphResult",
     "FetchResult",
     "ResearchMode",

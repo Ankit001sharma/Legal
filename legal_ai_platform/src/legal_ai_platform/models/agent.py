@@ -7,26 +7,46 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from legal_ai_platform.models.research import ResearchMode
+from legal_ai_platform.models.task_types import TaskType
 
 
 class AgentRequest(BaseModel):
     """Generic task envelope sent to any agent via the orchestrator."""
 
     query: str
-    task_type: str | None = Field(
+    task_type: list[TaskType] | None = Field(
         default=None,
-        description="Optional explicit task type; if omitted the classifier decides",
+        description=(
+            "Optional agent task type(s) in priority order "
+            "(e.g. contract review, summarization, research). "
+            "If omitted, the classifier decides."
+        ),
+        examples=[["research"], ["contract"], ["summary", "research"]],
     )
     mode: ResearchMode = Field(
         default=ResearchMode.NORMAL,
         description="Research depth mode: 'normal' (fast, default) or 'deep' (exhaustive memo)",
     )
     context: dict[str, Any] = Field(default_factory=dict)
-    tenant_id: str | None = None
-    max_results: int = Field(default=10, ge=1, le=100)
-    thread_id: str | None = Field(
+    tenant_id: str | None = Field(
         default=None,
-        description="Conversation/session id; reuse to continue a multi-turn exchange",
+        description="Super-admin only: operate inside a tenant context. Ignored for other roles.",
+    )
+    user_id: str | None = Field(
+        default=None,
+        description="Set by gateway from JWT; not trusted from client.",
+    )
+    role: str | None = Field(
+        default=None,
+        description="Set by gateway from JWT; not trusted from client.",
+    )
+    max_results: int = Field(default=10, ge=1, le=100)
+    session_id: str | None = Field(
+        default=None,
+        description=(
+            "Frontend-owned conversation session id. "
+            "Reuse the same value on every turn; null for anonymous guests."
+        ),
     )
 
 
@@ -40,9 +60,9 @@ class AgentResponse(BaseModel):
     events: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
     success: bool = True
-    thread_id: str | None = Field(
+    session_id: str | None = Field(
         default=None,
-        description="Session id to pass back on the next request to continue the thread",
+        description="Echo of the request session_id (same value, never a newly generated id)",
     )
     awaiting_input: bool = Field(
         default=False,
