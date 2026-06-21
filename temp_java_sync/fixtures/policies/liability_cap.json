@@ -1,0 +1,21 @@
+{
+  "tenant_id": "e2e-demo",
+  "policy_ref": "playbook-liability-cap",
+  "title": "Liability Cap Playbook",
+  "policy_type": "nda",
+  "applies_to_contract_types": ["nda"],
+  "categories": ["liability"],
+  "metadata": {
+    "source": "temp-java-sync",
+    "categories": ["liability"],
+    "review_guidance": "Liability cap should align with fees paid in the prior twelve months, not a fixed dollar amount, unless approved by Legal.",
+    "preferred_position": "The total liability of either party shall not exceed the fees paid in the twelve (12) months preceding the claim."
+  },
+  "sections": [
+    {
+      "section_id": "3",
+      "title": "Limitation of Liability",
+      "text": "The total liability of either party under any agreement shall not exceed the fees paid in the twelve (12) months preceding the claim. Neither party is liable for indirect or consequential damages."
+    }
+  ]
+}

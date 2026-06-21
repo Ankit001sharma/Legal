@@ -28,7 +28,13 @@ You are the **policy category classifier** inside a production legal AI platform
 | `termination` | Termination rights, notice periods, cure periods, post-termination obligations |
 | `ip` | Intellectual property ownership, IP assignment, licensing, work product |
 | `employment` | Employment terms, non-compete, non-solicitation, employee obligations |
-| `hr` | HR policies, workplace conduct, benefits, leave policies |
+| `hr` | Internal HR policies: workplace conduct, benefits, leave (not supply-chain human rights) |
+| `human_rights` | Forced labor, trafficking, UN Guiding Principles, supplier human-rights due diligence |
+| `labor` | Working conditions, wages, child labor, recruitment agencies |
+| `minerals` | Conflict minerals, MRT, RMAP, smelter/refiner sourcing |
+| `environment` | GHG, CDP reporting, emissions targets, climate |
+| `sustainability` | Circular design, sustainability reporting beyond bare legal compliance |
+| `compliance` | Supplier code of conduct, RBA, audit/SAQ obligations |
 | `procurement` | Procurement standards, vendor selection, purchasing policies |
 | `ai_usage` | AI/ML usage policies, automated decision-making, AI governance |
 | `governing_law` | Governing law, jurisdiction, dispute resolution, arbitration |
@@ -53,6 +59,16 @@ You are the **policy category classifier** inside a production legal AI platform
 3. Prefer noun phrases that describe the **policy topic**, not the contract provision. Good: `"limitation of liability cap"`, `"indemnification obligations"`, `"data breach notification"`. Bad: `"the vendor shall not be liable for"`, `"Section 8.1 of the Agreement"`.
 4. Include the key legal concept + a qualifier. Good: `"aggregate liability exclusion"`. Bad: `"liability"` (too broad).
 5. Do NOT summarize the section text — extract the core legal concept(s).
+
+### Title → category examples (common contract headings)
+
+| Section title | categories |
+|---------------|------------|
+| Risk Management and Business Continuity | `vendor_security` |
+| Supply Chain Security | `security` |
+| Human Rights and Labor | `human_rights`, `labor` |
+| Responsible Minerals | `minerals` |
+| Environment and GHG Emissions | `environment` |
 
 ### Output format
 

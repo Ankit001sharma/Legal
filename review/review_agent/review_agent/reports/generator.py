@@ -81,6 +81,8 @@ def _render_executive_summary(
         1 for f in report.findings if f.grounded is False
     )
     guard_failed = ops.guard_failed if ops else 0
+    guard_inference = ops.guard_inference_ok if ops else 0
+    quote_repaired = ops.quote_repair_success if ops else 0
 
     return [
         "## Executive summary",
@@ -88,7 +90,8 @@ def _render_executive_summary(
         f"Reviewed **{reviewable_count}** contract sections against **{discovery_count}** discovered policies. "
         f"**{non_compliant}** non-compliant, **{critical}** critical, **{policy_conflict}** policy conflicts.",
         f"Retrieval retried **{retrieval_retry}** section(s); **{backfill}** coverage backfill(s). "
-        f"**{ungrounded}** finding(s) failed quote grounding; **{guard_failed}** failed rationale guard.",
+        f"**{ungrounded}** finding(s) failed quote grounding; **{guard_failed}** failed rationale guard; "
+        f"**{guard_inference}** inference-only (OK); **{quote_repaired}** quote(s) repaired.",
     ]
 
 
@@ -113,6 +116,11 @@ def _render_ops_block(artifact: ReviewArtifact) -> list[str]:
         f"| Policy conflicts | {ops.policy_conflict_count} |",
         f"| Rationale guard checked | {ops.guard_checked} |",
         f"| Rationale guard failed | {ops.guard_failed} |",
+        f"| Quote repair attempts | {ops.quote_repair_attempts} |",
+        f"| Quote repair success | {ops.quote_repair_success} |",
+        f"| Guard inference OK | {ops.guard_inference_ok} |",
+        f"| Guard rationale repair attempts | {ops.guard_repair_attempts} |",
+        f"| Guard rationale repair success | {ops.guard_repair_success} |",
     ]
 
 
@@ -130,12 +138,18 @@ def _finding_block(finding: ComplianceFinding) -> list[str]:
         lines.append(f"- **Policy document:** `{finding.policy_document_id}`")
     if finding.status.value == "NON_COMPLIANT" and policy_title:
         lines.append(f"- **Violated policy:** {policy_title} — {finding.dimension_label}")
-    lines.extend(
-        [
-            f"- **Rationale:** {finding.rationale}",
-            f"- **Contract quote:** {finding.contract_quote or '—'}",
-            f"- **Policy quote:** {finding.policy_quote or '—'}",
-            "",
-        ]
-    )
+    lines.append(f"- **Rationale:** {finding.rationale}")
+    if finding.status == ComplianceStatus.NON_COMPLIANT:
+        lines.append("- **Contract text (violates policy):**")
+        lines.append(f"  > {finding.contract_quote or '—'}")
+        lines.append("- **Policy text (required standard):**")
+        lines.append(f"  > {finding.policy_quote or '—'}")
+    else:
+        lines.extend(
+            [
+                f"- **Contract quote:** {finding.contract_quote or '—'}",
+                f"- **Policy quote:** {finding.policy_quote or '—'}",
+            ]
+        )
+    lines.append("")
     return lines

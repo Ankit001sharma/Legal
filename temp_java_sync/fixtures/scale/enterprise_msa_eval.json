@@ -1,0 +1,257 @@
+{
+  "contract_ref": "scale-enterprise-msa-2026",
+  "eval_type": "engineer_curated_v1",
+  "gap_sections": 14,
+  "strong_sections": 6,
+  "gap_sections_minimum_hits": 12,
+  "gap_miss_allowance": 2,
+  "strong_sections_max_false_nc": 2,
+  "sections": {
+    "1": {
+      "topic": "Definitions and Interpretation",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "general"
+    },
+    "2": {
+      "topic": "Supplier Code of Conduct",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "compliance"
+    },
+    "3": {
+      "topic": "Human Rights and Labor Standards",
+      "expect_gap": false,
+      "expect_statuses": [
+        "COMPLIANT",
+        "INCONCLUSIVE",
+        "INSUFFICIENT_POLICY_CONTEXT"
+      ],
+      "bad_statuses": [
+        "NON_COMPLIANT"
+      ],
+      "category": "human_rights"
+    },
+    "4": {
+      "topic": "Responsible Minerals and Conflict Minerals",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "minerals"
+    },
+    "5": {
+      "topic": "Environmental Compliance and GHG Reporting",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "environment"
+    },
+    "6": {
+      "topic": "Information Security and MSS",
+      "expect_gap": false,
+      "expect_statuses": [
+        "COMPLIANT",
+        "INCONCLUSIVE",
+        "INSUFFICIENT_POLICY_CONTEXT"
+      ],
+      "bad_statuses": [
+        "NON_COMPLIANT"
+      ],
+      "category": "security"
+    },
+    "7": {
+      "topic": "Supply Chain Visibility and Business Continuity",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "vendor_security"
+    },
+    "8": {
+      "topic": "Limitation of Liability",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "liability"
+    },
+    "9": {
+      "topic": "Indemnification",
+      "expect_gap": false,
+      "expect_statuses": [
+        "COMPLIANT",
+        "INCONCLUSIVE",
+        "INSUFFICIENT_POLICY_CONTEXT"
+      ],
+      "bad_statuses": [
+        "NON_COMPLIANT"
+      ],
+      "category": "indemnity"
+    },
+    "10": {
+      "topic": "Confidential Information",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "confidentiality"
+    },
+    "11": {
+      "topic": "Data Protection and Privacy",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "privacy"
+    },
+    "12": {
+      "topic": "Data Retention and Deletion",
+      "expect_gap": false,
+      "expect_statuses": [
+        "COMPLIANT",
+        "INCONCLUSIVE",
+        "INSUFFICIENT_POLICY_CONTEXT"
+      ],
+      "bad_statuses": [
+        "NON_COMPLIANT"
+      ],
+      "category": "data_retention"
+    },
+    "13": {
+      "topic": "Service Levels and Availability",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "sla"
+    },
+    "14": {
+      "topic": "Payment Terms and Invoicing",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "payment"
+    },
+    "15": {
+      "topic": "Intellectual Property Rights",
+      "expect_gap": false,
+      "expect_statuses": [
+        "COMPLIANT",
+        "INCONCLUSIVE",
+        "INSUFFICIENT_POLICY_CONTEXT"
+      ],
+      "bad_statuses": [
+        "NON_COMPLIANT"
+      ],
+      "category": "ip"
+    },
+    "16": {
+      "topic": "Insurance Requirements",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "insurance"
+    },
+    "17": {
+      "topic": "Termination",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "termination"
+    },
+    "18": {
+      "topic": "Governing Law and Dispute Resolution",
+      "expect_gap": false,
+      "expect_statuses": [
+        "COMPLIANT",
+        "INCONCLUSIVE",
+        "INSUFFICIENT_POLICY_CONTEXT"
+      ],
+      "bad_statuses": [
+        "NON_COMPLIANT"
+      ],
+      "category": "governing_law"
+    },
+    "19": {
+      "topic": "Subcontracting and Assignment",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "procurement"
+    },
+    "20": {
+      "topic": "Artificial Intelligence and Automated Processing",
+      "expect_gap": true,
+      "expect_statuses": [
+        "NON_COMPLIANT",
+        "INCONCLUSIVE"
+      ],
+      "bad_statuses": [
+        "COMPLIANT"
+      ],
+      "category": "ai_usage"
+    }
+  }
+}

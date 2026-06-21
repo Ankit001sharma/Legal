@@ -15,6 +15,7 @@ if _LEGAL_AI.is_dir() and str(_LEGAL_AI) not in sys.path:
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "integration: requires Postgres pgvector")
+    config.addinivalue_line("markers", "benchmark: live LLM benchmark (nightly)")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -24,6 +25,7 @@ def _database_url_for_tests():
         "postgresql://legalai:legalai@localhost:5435/legalai",
     )
     os.environ.setdefault("DOCUMENT_STORE_BACKEND", "pgvector")
+    os.environ.setdefault("RERANKER_BACKEND", "lexical")
     from document_core.config import get_settings as get_core_settings
 
     get_core_settings.cache_clear()
@@ -82,5 +84,7 @@ def review_settings_defaults(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("REVIEW_POLICY_SCOPE", "discovered")
     monkeypatch.setenv("GUARD_PASS_ENABLED", "false")
     from review_agent.config import get_settings
+    from review_agent.models import llm_gateway
 
     get_settings.cache_clear()
+    llm_gateway.reset_llm_limiter()

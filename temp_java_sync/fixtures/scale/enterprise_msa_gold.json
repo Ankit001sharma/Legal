@@ -1,0 +1,216 @@
+{
+  "tenant_id": "scale-gold",
+  "contract_ref": "scale-enterprise-msa-2026",
+  "title": "Enterprise Master Services Agreement \u2014 GlobalTech / Apex Vendor",
+  "contract_type": "msa",
+  "metadata": {
+    "source": "scale-benchmark",
+    "benchmark_index": 0,
+    "eval_labels": {
+      "1": {
+        "category": "general",
+        "expect_gap": true,
+        "title": "Definitions and Interpretation"
+      },
+      "2": {
+        "category": "compliance",
+        "expect_gap": true,
+        "title": "Supplier Code of Conduct"
+      },
+      "3": {
+        "category": "human_rights",
+        "expect_gap": false,
+        "title": "Human Rights and Labor Standards"
+      },
+      "4": {
+        "category": "minerals",
+        "expect_gap": true,
+        "title": "Responsible Minerals and Conflict Minerals"
+      },
+      "5": {
+        "category": "environment",
+        "expect_gap": true,
+        "title": "Environmental Compliance and GHG Reporting"
+      },
+      "6": {
+        "category": "security",
+        "expect_gap": false,
+        "title": "Information Security and MSS"
+      },
+      "7": {
+        "category": "vendor_security",
+        "expect_gap": true,
+        "title": "Supply Chain Visibility and Business Continuity"
+      },
+      "8": {
+        "category": "liability",
+        "expect_gap": true,
+        "title": "Limitation of Liability"
+      },
+      "9": {
+        "category": "indemnity",
+        "expect_gap": false,
+        "title": "Indemnification"
+      },
+      "10": {
+        "category": "confidentiality",
+        "expect_gap": true,
+        "title": "Confidential Information"
+      },
+      "11": {
+        "category": "privacy",
+        "expect_gap": true,
+        "title": "Data Protection and Privacy"
+      },
+      "12": {
+        "category": "data_retention",
+        "expect_gap": false,
+        "title": "Data Retention and Deletion"
+      },
+      "13": {
+        "category": "sla",
+        "expect_gap": true,
+        "title": "Service Levels and Availability"
+      },
+      "14": {
+        "category": "payment",
+        "expect_gap": true,
+        "title": "Payment Terms and Invoicing"
+      },
+      "15": {
+        "category": "ip",
+        "expect_gap": false,
+        "title": "Intellectual Property Rights"
+      },
+      "16": {
+        "category": "insurance",
+        "expect_gap": true,
+        "title": "Insurance Requirements"
+      },
+      "17": {
+        "category": "termination",
+        "expect_gap": true,
+        "title": "Termination"
+      },
+      "18": {
+        "category": "governing_law",
+        "expect_gap": false,
+        "title": "Governing Law and Dispute Resolution"
+      },
+      "19": {
+        "category": "procurement",
+        "expect_gap": true,
+        "title": "Subcontracting and Assignment"
+      },
+      "20": {
+        "category": "ai_usage",
+        "expect_gap": true,
+        "title": "Artificial Intelligence and Automated Processing"
+      }
+    },
+    "page_estimate": "5-7",
+    "section_count": 20
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Definitions and Interpretation",
+      "text": "Capitalized terms have the meanings set forth herein. 'Confidential Information' means any information marked confidential or that should reasonably be understood as confidential. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "2",
+      "title": "Supplier Code of Conduct",
+      "text": "Supplier acknowledges Buyer's general expectations but is not required to achieve third-party social compliance certification, complete SAQs, or share audit reports unless Buyer requests in writing. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "3",
+      "title": "Human Rights and Labor Standards",
+      "text": "Supplier prohibits forced labor in all forms, maintains OECD-aligned due diligence, and shall not charge recruitment fees to workers. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "4",
+      "title": "Responsible Minerals and Conflict Minerals",
+      "text": "Supplier is not obligated to complete Minerals Reporting Templates, identify smelters, or remove high-risk smelters unless required by law. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "5",
+      "title": "Environmental Compliance and GHG Reporting",
+      "text": "Supplier complies with applicable environmental laws. Supplier is not required to report GHG emissions to CDP or publish reduction targets. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "6",
+      "title": "Information Security and MSS",
+      "text": "Supplier shall conform to Buyer's Master Security Specification including AES-256 encryption, MFA, annual penetration testing, and 72-hour breach notification. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "7",
+      "title": "Supply Chain Visibility and Business Continuity",
+      "text": "Supplier will notify Buyer of material disruptions when practicable. Supplier is not required to participate in SCV surveys or maintain formal BCP testing. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "8",
+      "title": "Limitation of Liability",
+      "text": "Except for gross negligence, total liability shall not exceed one hundred thousand dollars ($100,000). Neither party is liable for consequential damages under any circumstance. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "9",
+      "title": "Indemnification",
+      "text": "Vendor shall indemnify, defend, and hold harmless Customer from third-party IP infringement claims and data breach claims arising from Vendor's deliverables or processing. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "10",
+      "title": "Confidential Information",
+      "text": "Receiving party shall protect confidential information using commercially reasonable efforts. Residual knowledge of general ideas is permitted without restriction. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "11",
+      "title": "Data Protection and Privacy",
+      "text": "Each party handles personal data according to its own privacy policies. Processor may use sub-processors without prior notice and may use data to improve services. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "12",
+      "title": "Data Retention and Deletion",
+      "text": "Processor shall delete or return all personal data within 90 days of termination and provide written certification of deletion including backup crypto-shredding. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "13",
+      "title": "Service Levels and Availability",
+      "text": "Vendor targets commercially reasonable uptime. No service credits apply for downtime regardless of duration or business impact. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "14",
+      "title": "Payment Terms and Invoicing",
+      "text": "Buyer shall pay undisputed invoices within sixty (60) days. Vendor may charge late fees at Vendor's discretion up to maximum permitted by law. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "15",
+      "title": "Intellectual Property Rights",
+      "text": "All work product created under this Agreement is assigned to Customer upon payment. Vendor retains pre-existing IP with perpetual license to Customer. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "16",
+      "title": "Insurance Requirements",
+      "text": "Vendor maintains insurance appropriate for its business. No minimum coverage amounts or additional insured status required. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "17",
+      "title": "Termination",
+      "text": "Either party may terminate upon ten (10) days notice for any reason. No refund of prepaid fees upon termination for convenience. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "18",
+      "title": "Governing Law and Dispute Resolution",
+      "text": "Governed by Delaware law. Exclusive jurisdiction in Delaware state and federal courts unless dispute exceeds $1M then LCIA arbitration. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "19",
+      "title": "Subcontracting and Assignment",
+      "text": "Vendor may subcontract any portion of services without Buyer approval. Vendor may assign this Agreement to any affiliate without consent. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    },
+    {
+      "section_id": "20",
+      "title": "Artificial Intelligence and Automated Processing",
+      "text": "Vendor may use Customer data to train and improve machine learning models. Automated decisions need not be explainable to data subjects. The parties acknowledge that this section forms an integral part of the Agreement and supersedes any prior oral or written understandings relating to the subject matter herein. Any amendment must be in writing signed by authorized representatives of both parties. If any provision is held invalid, the remainder continues in full force. Neither party's failure to enforce any provision constitutes a waiver. Notices under this section must be delivered to the addresses set forth in the Notices article."
+    }
+  ]
+}

@@ -159,6 +159,17 @@ def _build_ops(
         ),
         guard_checked=_int_val(compliance_stats, "guard_checked"),
         guard_failed=_int_val(compliance_stats, "guard_failed"),
+        quote_repair_attempts=_int_val(compliance_stats, "quote_repair_attempts"),
+        quote_repair_success=_int_val(compliance_stats, "quote_repair_success"),
+        guard_inference_ok=_int_val(compliance_stats, "guard_inference_ok"),
+        guard_repair_attempts=_int_val(compliance_stats, "guard_repair_attempts"),
+        guard_repair_success=_int_val(compliance_stats, "guard_repair_success"),
+        reranker_cross_encoder_sections=_int_val(
+            compliance_stats, "reranker_cross_encoder_sections"
+        ),
+        reranker_lexical_fallback_sections=_int_val(
+            compliance_stats, "reranker_lexical_fallback_sections"
+        ),
     )
 
 
@@ -221,6 +232,7 @@ def build_review_artifact(
         work_queue={
             "gap_section_ids": list(state.get("gap_section_ids") or []),
             "unclear_finding_ids": list(state.get("unclear_finding_ids") or []),
+            "unclear_recompare_finding_ids": list(state.get("unclear_recompare_finding_ids") or []),
             "conflict_pairs": list(state.get("conflict_pairs") or []),
         },
         gap_llm=_build_gap_llm(final_findings),

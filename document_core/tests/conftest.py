@@ -11,11 +11,28 @@ from document_core.db.migrate import run_migrations
 from document_core.store.memory_store import reset_store, set_store
 from document_core.store.pgvector_store import PgVectorDocumentStore
 
+# CI-stable defaults: avoid loading cross-encoder models in unit tests.
+os.environ.setdefault("RERANKER_BACKEND", "lexical")
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "integration: requires Postgres (TEST_DATABASE_URL)")
+
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        fixturenames = getattr(item, "fixturenames", ()) or ()
+        if "store" in fixturenames or "pg_engine" in fixturenames:
+            item.add_marker(pytest.mark.integration)
+
 
 def _database_url() -> str:
     return os.environ.get(
-        "DATABASE_URL",
-        "postgresql://legalai:legalai@localhost:5435/legalai",
+        "TEST_DATABASE_URL",
+        os.environ.get(
+            "DATABASE_URL",
+            "postgresql://legalai:legalai@localhost:5435/legalai_test",
+        ),
     )
 
 

@@ -1,4 +1,4 @@
-"""Classify contract sections into policy category families (LLM only)."""
+"""Classify contract sections: lexical-first with LLM fallback."""
 
 from __future__ import annotations
 
@@ -11,10 +11,13 @@ from review_agent.config import ReviewSettings, get_settings
 from review_agent.models.llm_gateway import get_review_model, invoke_structured
 from review_agent.schemas.section_classify import (
     BatchSectionCategoryLLMResult,
-    SectionCategoryLLMResult,
     SectionCategoryResult,
 )
 from review_agent.services.async_limits import gather_limited
+from review_agent.services.section_category_lexical import (
+    infer_lexical_classify,
+    infer_query_terms_from_lexical,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +44,93 @@ def _load_prompt_template() -> tuple[str, str]:
     return system_text.strip(), user_block.strip()
 
 
-def _fallback_result(section: IndexedChunk, *, reason: str) -> SectionCategoryResult:
+def _enrich_categories_from_lexical(
+    categories: list[str],
+    section: IndexedChunk,
+) -> tuple[list[str], str | None]:
+    if categories != ["general"]:
+        return categories, None
+    lex = infer_lexical_classify(section)
+    enriched = normalize_categories(lex.categories) or categories
+    if enriched == categories:
+        return categories, None
+    return enriched, f"lexical_enriched={enriched}"
+
+
+def _resolve_categories_and_terms(
+    section: IndexedChunk,
+    *,
+    raw_categories: list[str] | None,
+    llm_query_terms: list[str] | None = None,
+) -> tuple[list[str], list[str], str | None]:
+    """Normalize LLM categories; enrich or override general via lexical."""
+    categories = normalize_categories(raw_categories or []) or ["general"]
+    note: str | None = None
+
+    categories, enrich_note = _enrich_categories_from_lexical(categories, section)
+    if enrich_note:
+        note = enrich_note
+
+    if categories == ["general"]:
+        lex = infer_lexical_classify(section)
+        if lex.categories:
+            categories = normalize_categories(lex.categories)
+            note = f"lexical_override_general={categories}"
+
+    if categories != ["general"]:
+        terms = infer_query_terms_from_lexical(categories, section)
+    elif llm_query_terms:
+        terms = list(llm_query_terms)
+    else:
+        terms = [_section_query(section)]
+
+    return categories, terms, note
+
+
+def _lexical_classify_result(
+    section: IndexedChunk,
+    *,
+    settings: ReviewSettings,
+) -> SectionCategoryResult | None:
+    """Return full result if LLM can be skipped; None if LLM required."""
+    if settings.section_classify_mode != "lexical_first":
+        return None
+    lex = infer_lexical_classify(section)
+    if lex.confidence not in ("title", "body") or not lex.categories:
+        return None
+    if lex.categories == ["general"]:
+        return None
     return SectionCategoryResult(
         section_id=section.section_id,
-        categories=["general"],
-        query_terms=[_section_query(section)],
-        classify_warning=reason,
+        categories=lex.categories,
+        query_terms=infer_query_terms_from_lexical(lex.categories, section),
+        classify_warning=f"lexical_first={lex.confidence}:{lex.categories}",
+    )
+
+
+def _fallback_result(
+    section: IndexedChunk,
+    *,
+    reason: str,
+    settings: ReviewSettings | None = None,
+) -> SectionCategoryResult:
+    categories, terms, note = _resolve_categories_and_terms(section, raw_categories=["general"])
+    if categories != ["general"]:
+        warning = f"{reason}; lexical_fallback={categories}"
+    else:
+        warning = reason
+
+    logger.warning(
+        "section classifier fallback for %s: %s (categories=%s)",
+        section.section_id,
+        reason,
+        categories,
+    )
+    return SectionCategoryResult(
+        section_id=section.section_id,
+        categories=categories,
+        query_terms=terms,
+        classify_warning=warning,
     )
 
 
@@ -56,12 +140,102 @@ async def classify_section_policies(
     contract_type: str | None = None,
     settings: ReviewSettings | None = None,
 ) -> SectionCategoryResult:
+    cfg = settings or get_settings()
     results = await classify_sections_batch(
         [section],
         contract_type=contract_type,
-        settings=settings,
+        settings=cfg,
     )
-    return results.get(section.section_id) or _fallback_result(section, reason="missing classify result")
+    return results.get(section.section_id) or _fallback_result(
+        section,
+        reason="missing classify result",
+        settings=cfg,
+    )
+
+
+async def _classify_batch_llm(
+    sections: list[IndexedChunk],
+    *,
+    contract_type: str | None,
+    settings: ReviewSettings,
+) -> dict[str, SectionCategoryResult]:
+    if not sections:
+        return {}
+
+    system_tpl, _user_tpl = _load_prompt_template()
+    blocks: list[str] = []
+    for section in sections:
+        text = (section.text or "")[: settings.section_classify_max_chars]
+        blocks.append(
+            f"### Section {section.section_id} — {section.title}\n```\n{text}\n```"
+        )
+    batch_user = (
+        f"Contract type: {contract_type or 'unknown'}\n\n"
+        f"Classify each section below. Return one item per section_id.\n\n"
+        + "\n\n".join(blocks)
+    )
+    max_tokens = 512 if len(sections) == 1 else 1024
+    model = get_review_model(
+        temperature=settings.compliance_llm_temperature,
+        max_tokens=max_tokens,
+    )
+    try:
+        result = await invoke_structured(
+            model,
+            BatchSectionCategoryLLMResult,
+            system=system_tpl,
+            user=batch_user,
+        )
+        out: dict[str, SectionCategoryResult] = {}
+        for item in result.items:
+            section = next(s for s in sections if s.section_id == item.section_id)
+            categories, terms, note = _resolve_categories_and_terms(
+                section,
+                raw_categories=item.categories,
+                llm_query_terms=item.query_terms,
+            )
+            out[item.section_id] = SectionCategoryResult(
+                section_id=item.section_id,
+                categories=categories,
+                query_terms=terms,
+                classify_warning=note,
+            )
+        for section in sections:
+            if section.section_id not in out:
+                out[section.section_id] = _fallback_result(
+                    section,
+                    reason="classifier omitted section in batch response",
+                    settings=settings,
+                )
+        return out
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("batch section classify failed: %s", exc)
+        if not settings.section_classify_batch_retry_single or len(sections) == 1:
+            return {
+                section.section_id: _fallback_result(
+                    section,
+                    reason=str(exc) or "batch classify failed",
+                    settings=settings,
+                )
+                for section in sections
+            }
+
+        out: dict[str, SectionCategoryResult] = {}
+        for section in sections:
+            try:
+                single = await _classify_batch_llm(
+                    [section],
+                    contract_type=contract_type,
+                    settings=settings,
+                )
+                out[section.section_id] = single[section.section_id]
+            except Exception as single_exc:  # noqa: BLE001
+                out[section.section_id] = _fallback_result(
+                    section,
+                    reason=f"batch_and_single_failed:{single_exc}",
+                    settings=settings,
+                )
+        return out
 
 
 async def classify_sections_batch(
@@ -74,91 +248,25 @@ async def classify_sections_batch(
     if not sections:
         return {}
 
-    if len(sections) == 1:
-        return await _classify_single_llm(sections[0], contract_type=contract_type, settings=cfg)
+    out: dict[str, SectionCategoryResult] = {}
+    needs_llm: list[IndexedChunk] = []
 
-    system_tpl, user_tpl = _load_prompt_template()
-    blocks: list[str] = []
     for section in sections:
-        text = (section.text or "")[: cfg.section_classify_max_chars]
-        blocks.append(
-            f"### Section {section.section_id} — {section.title}\n```\n{text}\n```"
-        )
-    batch_user = (
-        f"Contract type: {contract_type or 'unknown'}\n\n"
-        f"Classify each section below. Return one item per section_id.\n\n"
-        + "\n\n".join(blocks)
-    )
-    model = get_review_model(temperature=cfg.compliance_llm_temperature, max_tokens=1024)
-    try:
-        result = await invoke_structured(
-            model,
-            BatchSectionCategoryLLMResult,
-            system=system_tpl,
-            user=batch_user,
-        )
-        out: dict[str, SectionCategoryResult] = {}
-        for item in result.items:
-            categories = normalize_categories(item.categories) or ["general"]
-            terms = item.query_terms or [_section_query(
-                next(s for s in sections if s.section_id == item.section_id)
-            )]
-            out[item.section_id] = SectionCategoryResult(
-                section_id=item.section_id,
-                categories=categories,
-                query_terms=terms,
-            )
-        for section in sections:
-            if section.section_id not in out:
-                out[section.section_id] = _fallback_result(
-                    section,
-                    reason="classifier omitted section in batch response",
-                )
-        return out
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("batch section classify failed: %s", exc)
-        return {
-            section.section_id: _fallback_result(section, reason=str(exc))
-            for section in sections
-        }
+        lexical = _lexical_classify_result(section, settings=cfg)
+        if lexical is not None:
+            out[section.section_id] = lexical
+        else:
+            needs_llm.append(section)
 
-
-async def _classify_single_llm(
-    section: IndexedChunk,
-    *,
-    contract_type: str | None,
-    settings: ReviewSettings,
-) -> dict[str, SectionCategoryResult]:
-    system_tpl, user_tpl = _load_prompt_template()
-    user = user_tpl.format(
-        contract_type=contract_type or "unknown",
-        section_id=section.section_id,
-        section_title=section.title or section.section_id,
-        section_text=(section.text or "")[: settings.section_classify_max_chars],
-    )
-    try:
-        model = get_review_model(
-            temperature=settings.compliance_llm_temperature,
-            max_tokens=512,
-        )
-        result = await invoke_structured(
-            model,
-            SectionCategoryLLMResult,
-            system=system_tpl,
-            user=user,
-        )
-        categories = normalize_categories(result.categories) or ["general"]
-        terms = result.query_terms or [_section_query(section)]
-        return {
-            section.section_id: SectionCategoryResult(
-                section_id=section.section_id,
-                categories=categories,
-                query_terms=terms,
+    if needs_llm:
+        out.update(
+            await _classify_batch_llm(
+                needs_llm,
+                contract_type=contract_type,
+                settings=cfg,
             )
-        }
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("section classify LLM failed for %s: %s", section.section_id, exc)
-        return {section.section_id: _fallback_result(section, reason=str(exc))}
+        )
+    return out
 
 
 async def classify_all_sections(
@@ -180,9 +288,15 @@ async def classify_all_sections(
     )
 
     merged: dict[str, SectionCategoryResult] = {}
-    for result in results:
+    for batch, result in zip(batches, results, strict=True):
         if isinstance(result, BaseException):
             logger.warning("classify batch failed: %s", result)
+            for section in batch:
+                merged[section.section_id] = _fallback_result(
+                    section,
+                    reason=str(result),
+                    settings=cfg,
+                )
             continue
         merged.update(result)
     return merged

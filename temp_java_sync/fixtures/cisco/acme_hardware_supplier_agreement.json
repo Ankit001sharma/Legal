@@ -1,0 +1,43 @@
+{
+  "tenant_id": "cisco-beta",
+  "contract_ref": "acme-cisco-supplier-2026",
+  "title": "Hardware Supply Agreement — Acme Components Ltd. / Cisco-style Buyer",
+  "contract_type": "vendor",
+  "metadata": {
+    "source": "real-world-beta",
+    "parties": ["Acme Components Ltd.", "Buyer Corp (Cisco-style OEM)"],
+    "scenario": "Draft supplier agreement for supply chain hardware — intentionally weaker than Cisco Supplier Guide and Global Human Rights Policy (Jan 2026 public docs)"
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Supplier Code of Conduct",
+      "text": "Supplier shall use commercially reasonable efforts to comply with applicable local laws and regulations at facilities manufacturing products for Buyer. Supplier acknowledges receipt of Buyer's general supplier expectations but is not required to achieve any third-party social compliance certification, complete facility-level self-assessments, or share audit reports unless Buyer requests them in writing with thirty (30) days notice."
+    },
+    {
+      "section_id": "2",
+      "title": "Human Rights and Labor",
+      "text": "Supplier represents that it complies with local labor laws. Supplier may use recruitment agencies and may pass reasonable recruitment, placement, and processing fees to workers where permitted by local law. Supplier is not required to maintain a formal human rights due diligence program. Supplier makes no specific commitment regarding freedom of association, prohibition of forced labor, or protection of vulnerable groups beyond what local law requires."
+    },
+    {
+      "section_id": "3",
+      "title": "Responsible Minerals",
+      "text": "Supplier will use commercially reasonable efforts to source materials responsibly. Supplier is not obligated to complete Minerals Reporting Templates (MRTs), identify smelters or refiners in its supply chain, or remove smelters designated as high-risk by Buyer. Supplier may continue sourcing from smelters that have not completed RMAP or equivalent assurance unless expressly prohibited by applicable law."
+    },
+    {
+      "section_id": "4",
+      "title": "Environment and GHG Emissions",
+      "text": "Supplier shall comply with applicable environmental laws. Supplier is not required to report greenhouse gas emissions to CDP or any other registry, publish a public absolute GHG emissions reduction target, or obtain third-party verification of emissions data. Water reporting and circular design data requests are at Supplier's sole discretion."
+    },
+    {
+      "section_id": "5",
+      "title": "Supply Chain Security",
+      "text": "Supplier shall maintain reasonable physical and logical security practices appropriate for its business. Supplier is not required to conform to Buyer's Master Security Specification (MSS), participate in security audits, or complete supplier security self-assessments unless Buyer and Supplier mutually agree in a separate statement of work."
+    },
+    {
+      "section_id": "6",
+      "title": "Risk Management and Business Continuity",
+      "text": "Supplier will notify Buyer of material disruptions affecting delivery within a reasonable time. Supplier is not required to participate in quarterly Supply Chain Visibility (SCV) surveys, register supplier site locations in Buyer's visibility program, or complete business continuity self-assessment audits on any fixed schedule."
+    }
+  ]
+}

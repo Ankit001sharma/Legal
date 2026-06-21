@@ -1,0 +1,26 @@
+{
+  "tenant_id": "e2e-demo",
+  "policy_ref": "playbook-confidentiality-standard",
+  "title": "Standard Confidentiality Playbook",
+  "policy_type": "nda",
+  "applies_to_contract_types": ["nda"],
+  "categories": ["confidentiality"],
+  "metadata": {
+    "source": "temp-java-sync",
+    "categories": ["confidentiality"],
+    "review_guidance": "Receiving party must use at least reasonable care. Term should be at least 2 years for vendor NDAs.",
+    "preferred_position": "The receiving party shall protect Confidential Information using no less than reasonable care and industry-standard safeguards."
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Confidentiality Standard",
+      "text": "The receiving party shall protect Confidential Information using no less than reasonable care and industry-standard safeguards. Confidential Information includes all non-public business, technical, and financial information disclosed by the disclosing party."
+    },
+    {
+      "section_id": "2",
+      "title": "Term Standard",
+      "text": "NDA term shall be no less than two (2) years from the Effective Date."
+    }
+  ]
+}

@@ -36,6 +36,15 @@ _TOPIC_KEYWORDS: tuple[tuple[str, str], ...] = (
     (r"governing law|jurisdiction", "governing law"),
     (r"warrant", "warranties"),
     (r"assign", "assignment"),
+    (r"human rights|forced labor|modern slavery", "human rights forced labor"),
+    (r"responsible minerals|conflict minerals|\b3tg\b", "responsible minerals"),
+    (r"\benvironment\b|ghg|greenhouse|cdp|sustainability", "environment GHG reporting"),
+    (r"master security|\bmss\b|supply chain security", "information security MSS"),
+    (r"business continuity|\bbcp\b|supply chain visibility|\bscv\b", "business continuity SCV"),
+    (r"service level|\bsla\b|uptime", "service level agreement"),
+    (r"insurance|cyber liability", "insurance requirements"),
+    (r"payment|invoic", "payment terms"),
+    (r"code of conduct|\brba\b", "supplier code of conduct"),
 )
 
 

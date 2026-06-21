@@ -59,6 +59,13 @@ class ReviewArtifactOps(BaseModel):
     policy_conflict_count: int = 0
     guard_checked: int = 0
     guard_failed: int = 0
+    quote_repair_attempts: int = 0
+    quote_repair_success: int = 0
+    guard_inference_ok: int = 0
+    guard_repair_attempts: int = 0
+    guard_repair_success: int = 0
+    reranker_cross_encoder_sections: int = 0
+    reranker_lexical_fallback_sections: int = 0
 
 
 class ReviewArtifact(BaseModel):

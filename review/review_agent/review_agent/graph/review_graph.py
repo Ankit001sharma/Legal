@@ -10,7 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 from review_agent.clients.document_client import DocumentMCPClient
 from review_agent.clients.memory_client import MemoryMCPClient
-from review_agent.config import get_settings
+from review_agent.config import build_runtime_settings_snapshot, get_settings
 from review_agent.graph.discovery_nodes import contract_routing_node, policy_discovery_node
 from review_agent.graph.memory_nodes import load_memory_node, save_review_memory_node
 from review_agent.graph.section_compare_nodes import (
@@ -127,7 +127,9 @@ async def run_review(
         "indexed_policies": [],
         "fetched_policy_refs": [],
         "policy_ref_by_document_id": {},
-        "compliance_stats": {},
+        "compliance_stats": {
+            "runtime_settings": build_runtime_settings_snapshot(settings),
+        },
         "contract_routing": {},
         "discovered_policies": [],
         "discovered_policy_document_ids": [],
@@ -141,6 +143,7 @@ async def run_review(
         "section_compare_items": [],
         "gap_section_ids": [],
         "unclear_finding_ids": [],
+        "unclear_recompare_finding_ids": [],
         "conflict_pairs": [],
         "section_coverage": {},
     }

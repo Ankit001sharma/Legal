@@ -9,6 +9,7 @@ from uuid import UUID
 
 from document_core.config import get_settings as get_core_settings
 from document_core.schemas.chunk import DocumentKind, IndexedChunk, RetrievalHit, SearchRequest
+from document_core.schemas.taxonomy import normalize_categories
 from document_core.search.reranker import rerank_hits
 from review_agent.clients.document_client import DocumentMCPClient
 from review_agent.config import ReviewSettings, get_settings
@@ -41,6 +42,11 @@ def _union_hits(
 
 def _parse_scope_ids(scope_document_ids: list[str] | None) -> set[str]:
     return {str(item).strip() for item in (scope_document_ids or []) if str(item).strip()}
+
+
+def _is_general_only(categories: list[str]) -> bool:
+    normalized = normalize_categories(categories)
+    return not normalized or normalized == ["general"]
 
 
 def _query_for_attempt(
@@ -175,12 +181,20 @@ async def _retrieve_attempt(
         meta_path(),
     )
     union = _union_hits(dense_hits, fts_hits, meta_hits, paths=step)
+    rerank_usage: dict[str, str] = {}
     reranked = rerank_hits(
         query,
         union,
         top_k=cfg.retrieval_final_top_k,
         enabled=core.reranker_enabled,
+        backend=core.reranker_backend,
+        max_passage_chars=core.reranker_max_passage_chars,
+        fusion_retrieval_weight=core.reranker_fusion_retrieval_weight,
+        usage=rerank_usage,
     )
+    step["reranker_backend"] = core.reranker_backend if core.reranker_enabled else "off"
+    if rerank_usage.get("reranker_used"):
+        step["reranker_used"] = rerank_usage["reranker_used"]
     step["final_count"] = len(reranked)
     return reranked, step
 
@@ -220,6 +234,10 @@ async def multi_retrieve_for_section(
             attempt_index,
         )
         use_category_filter = wants_category_filter and cfg.retrieval_category_hard_filter
+        if cfg.retrieval_skip_hard_filter_for_general and _is_general_only(
+            classification.categories
+        ):
+            use_category_filter = False
         filter_doc_ids, resolve_meta = await _resolve_filter_document_ids(
             client,
             tenant_id=tenant_id,
@@ -278,6 +296,10 @@ async def multi_retrieve_for_section(
         "metadata_count": winning_step.get("metadata_count", 0),
         "union_count": winning_step.get("union_count", 0),
     }
+    if winning_step.get("reranker_used"):
+        paths["reranker_used"] = winning_step["reranker_used"]
+    if winning_step.get("reranker_backend"):
+        paths["reranker_backend"] = winning_step["reranker_backend"]
     if classification.classify_warning:
         paths["classify_warning"] = classification.classify_warning
 

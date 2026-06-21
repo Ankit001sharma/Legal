@@ -18,6 +18,13 @@ For every contract section paired with one or more policy sections, analyze **al
 
 **Do not skip any policy requirement.** Every substantive rule in the policy text must be checked against the contract text. If the policy says 5 things, you should produce up to 5 findings.
 
+### Output budget (per contract section)
+
+- Return **at most 4 material findings per contract section** unless multiple **distinct** NON_COMPLIANT gaps exist (different contract quotes).
+- **Combine** related sub-checks into one finding when they share the same contract quote and status.
+- **Prioritize** NON_COMPLIANT and `critical` severity over COMPLIANT observations.
+- Do not emit separate findings for the same gap repeated against multiple policy documents — pick the best-matched policy pair.
+
 ### Playbook hints (when present under Policy N)
 
 When **Playbook hints** include `preferred_position`, treat it as the organization's target language. Deviation from that position → `NON_COMPLIANT` or `INCONCLUSIVE` with quotes from both contract text and retrieved policy text.
@@ -25,6 +32,14 @@ When **Playbook hints** include `preferred_position`, treat it as the organizati
 When two retrieved policies disagree on the same point, use `POLICY_CONFLICT` and quote from both policies.
 
 Do **not** invent policy requirements that are not present in retrieved policy text or playbook hints.
+
+When only **one** policy block is provided for a contract section, compare **only** against that document. Do not infer requirements from other playbook families that were not retrieved.
+
+### Material deviations → NON_COMPLIANT
+
+When playbook `preferred_position` or policy text states a **numeric threshold, mandatory clause, or prohibited term**, and the contract **materially deviates** → `NON_COMPLIANT`, not `COMPLIANT` or vague `INCONCLUSIVE`.
+
+When the contract is **silent** on a **mandatory** playbook requirement (explicitly required in policy or preferred_position), use `NON_COMPLIANT` or `INCONCLUSIVE` with rationale stating the contract is silent on that requirement.
 
 ### Status values (use ONLY these exact strings)
 
@@ -49,6 +64,7 @@ Do **not** invent policy requirements that are not present in retrieved policy t
 Your quotes go through an **automated substring verification system**. If the quote is not an exact substring of the source text, the finding is automatically downgraded. Therefore:
 
 - `contract_quote`: Must be an **exact, verbatim substring** copied character-for-character from the contract section text shown in the input (inside the ``` code block under "Contract section").
+- `contract_quote` must come from **the same** `section_id` you declare — quotes from other contract sections in this batch are rejected.
 - `policy_quote`: Must be an **exact, verbatim substring** copied character-for-character from the policy section text shown in the input (inside the ``` code block under "Policy N").
 - Do NOT paraphrase, summarize, reorder words, fix typos, change capitalization, or add/remove punctuation.
 - Do NOT add ellipses (`...`) or brackets (`[...]`) inside quotes.

@@ -1,0 +1,85 @@
+name: Review CI
+
+on:
+  push:
+    paths:
+      - "Legal/review/**"
+      - "Legal/document_core/**"
+      - "Legal/temp_java_sync/beta_test/**"
+  pull_request:
+    paths:
+      - "Legal/review/**"
+      - "Legal/document_core/**"
+      - "Legal/temp_java_sync/beta_test/**"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Legal/review/review_agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -e ../../document_core
+          pip install -e .
+          pip install pytest pytest-asyncio httpx
+      - name: Unit tests (no Postgres)
+        run: python -m pytest -m "not integration" -q
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: legalai
+          POSTGRES_PASSWORD: legalai
+          POSTGRES_DB: legalai_test
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd "pg_isready -U legalai -d legalai_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: Legal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -e document_core
+          pip install -e review/review_agent
+          pip install pytest pytest-asyncio httpx sqlalchemy psycopg2-binary pgvector
+      - name: document_core integration
+        env:
+          TEST_DATABASE_URL: postgresql://legalai:legalai@localhost:5435/legalai_test
+          RERANKER_BACKEND: lexical
+        run: cd document_core && python -m pytest -m integration -q
+      - name: review_agent integration
+        env:
+          TEST_DATABASE_URL: postgresql://legalai:legalai@localhost:5435/legalai_test
+          RERANKER_BACKEND: lexical
+        run: cd review/review_agent && python -m pytest -m integration -q
+
+  benchmark-score:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Legal/temp_java_sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Benchmark scorer unit tests
+        run: python -m pytest tests/test_benchmark_score.py -q

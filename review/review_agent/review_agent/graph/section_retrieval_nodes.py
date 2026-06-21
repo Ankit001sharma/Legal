@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from document_core.config import get_settings as get_core_settings
 from review_agent.clients.document_client import DocumentMCPClient
 from review_agent.config import get_settings
 from review_agent.schemas.section_retrieval import SectionRetrievalBundle
@@ -19,6 +20,7 @@ async def section_policy_retrieval_node(
     client: DocumentMCPClient,
 ) -> dict[str, Any]:
     settings = get_settings()
+    core = get_core_settings()
     sections = filter_review_sections(
         state.get("contract_sections") or [],
         min_chars=settings.review_min_section_chars,
@@ -33,6 +35,20 @@ async def section_policy_retrieval_node(
         contract_type=state.get("contract_type"),
         settings=settings,
     )
+
+    warnings: list[str] = []
+    for section in sections:
+        classification = classifications.get(section.section_id)
+        if classification and classification.classify_warning:
+            label = "classifier note"
+            if classification.categories == ["general"] or "fallback" in (
+                classification.classify_warning or ""
+            ).lower():
+                label = "classifier fallback"
+            warnings.append(
+                f"section {section.section_id} {label} (categories="
+                f"{classification.categories}): {classification.classify_warning}"
+            )
 
     coros = [
         multi_retrieve_for_section(
@@ -50,7 +66,6 @@ async def section_policy_retrieval_node(
     results = await gather_limited(coros, limit=settings.section_retrieval_concurrency)
 
     bundles: dict[str, SectionRetrievalBundle] = {}
-    warnings: list[str] = []
     for section, result in zip(sections, results, strict=True):
         if isinstance(result, BaseException):
             warnings.append(f"retrieval failed for section {section.section_id}: {result}")
@@ -68,6 +83,9 @@ async def section_policy_retrieval_node(
     retry_sections = 0
     zero_hit_sections = 0
     max_attempts_used = 0
+    reranker_cross_encoder_sections = 0
+    reranker_lexical_fallback_sections = 0
+    reranker_off_sections = 0
     for bundle in bundles.values():
         meta = bundle.retrieval_meta or {}
         path_totals["dense"] += int(meta.get("dense_count") or 0)
@@ -80,6 +98,15 @@ async def section_policy_retrieval_node(
             zero_hit_sections += 1
         if attempts:
             max_attempts_used = max(max_attempts_used, len(attempts))
+        used = meta.get("reranker_used")
+        if used == "cross_encoder":
+            reranker_cross_encoder_sections += 1
+        elif used in ("lexical_fallback", "lexical"):
+            reranker_lexical_fallback_sections += 1
+        elif used == "off" or meta.get("reranker_backend") == "off" or not core.reranker_enabled:
+            reranker_off_sections += 1
+
+    reranker_backend_config = core.reranker_backend if core.reranker_enabled else "off"
 
     return {
         "section_retrieval_by_id": serialized,
@@ -92,5 +119,9 @@ async def section_policy_retrieval_node(
             "retrieval_retry_sections": retry_sections,
             "retrieval_zero_hit_sections": zero_hit_sections,
             "retrieval_max_attempts_used": max_attempts_used,
+            "reranker_cross_encoder_sections": reranker_cross_encoder_sections,
+            "reranker_lexical_fallback_sections": reranker_lexical_fallback_sections,
+            "reranker_off_sections": reranker_off_sections,
+            "reranker_backend_config": reranker_backend_config,
         },
     }

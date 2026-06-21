@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from document_core.schemas.chunk import IndexedChunk
-from document_core.schemas.compliance import ComplianceStatus
 from review_agent.clients.document_client import DocumentMCPClient
 from review_agent.config import get_settings
 from review_agent.schemas.section_retrieval import SectionRetrievalBundle
@@ -49,6 +48,9 @@ async def section_compare_llm_node(
     hits_by_section: dict[str, list] = {
         sid: list(bundle.policy_hits) for sid, bundle in bundles.items()
     }
+    categories_by_section = {
+        sid: list(bundle.categories) for sid, bundle in bundles.items()
+    }
     sections_with_policy = [s for s in sections if hits_by_section.get(s.section_id)]
     playbook_hints = _playbook_hints(state)
 
@@ -59,6 +61,7 @@ async def section_compare_llm_node(
         memory_context=state.get("memory_context") or "",
         settings=settings,
         playbook_hints_by_document=playbook_hints,
+        categories_by_section=categories_by_section,
     )
 
     path_counts = {"dense": 0, "fts": 0, "metadata": 0}
@@ -102,12 +105,16 @@ async def merge_section_findings_node(
         items,
         bundles,
         hints_by_document=_playbook_hints(state),
+        sections_by_id={s.section_id: s for s in _load_sections(state)},
     )
     return {
         "findings": merged.findings,
         "warnings": merged.warnings,
         "gap_section_ids": merged.gap_section_ids,
+        "no_policy_gap_ids": merged.no_policy_gap_ids,
+        "compare_omitted_gap_ids": merged.compare_omitted_gap_ids,
         "unclear_finding_ids": merged.unclear_finding_ids,
+        "unclear_recompare_finding_ids": merged.unclear_recompare_finding_ids,
         "conflict_pairs": [list(pair) for pair in merged.conflict_pairs],
     }
 
@@ -122,7 +129,10 @@ async def final_gap_verify_node(
     bundles = _load_bundles(state)
 
     gap_ids = list(state.get("gap_section_ids") or [])
+    no_policy_ids = list(state.get("no_policy_gap_ids") or [])
+    compare_omitted_ids = list(state.get("compare_omitted_gap_ids") or [])
     unclear_ids = list(state.get("unclear_finding_ids") or [])
+    recompare_ids = list(state.get("unclear_recompare_finding_ids") or [])
     raw_pairs = state.get("conflict_pairs") or []
     conflict_pairs = [tuple(p) for p in raw_pairs if len(p) == 2]
     existing = list(state.get("findings") or [])
@@ -133,7 +143,10 @@ async def final_gap_verify_node(
         sections_by_id=sections_by_id,
         bundles=bundles,
         gap_section_ids=gap_ids,
+        no_policy_gap_ids=no_policy_ids,
+        compare_omitted_gap_ids=compare_omitted_ids,
         unclear_finding_ids=unclear_ids,
+        unclear_recompare_finding_ids=recompare_ids,
         conflict_pairs=conflict_pairs,
         existing_findings=existing,
         contract_type=state.get("contract_type"),
@@ -151,7 +164,6 @@ async def final_gap_verify_node(
         if f.finding_id not in superseded_set
         and not (
             f.contract_section_id in resolved_section_ids
-            and f.status == ComplianceStatus.INSUFFICIENT_POLICY_CONTEXT
             and f.metadata.get("gap_type") in _gap_types
         )
     ]
@@ -168,6 +180,8 @@ async def final_gap_verify_node(
             reviewable,
             merged_findings,
             min_chars=settings.review_min_section_chars,
+            sections_by_id=sections_by_id,
+            settings=settings,
         )
         merged_findings = coverage.findings
         coverage_warnings = coverage.warnings

@@ -1,0 +1,21 @@
+{
+  "tenant_id": "e2e-demo",
+  "policy_ref": "playbook-indemnification-standard",
+  "title": "Indemnification Playbook",
+  "policy_type": "nda",
+  "applies_to_contract_types": ["nda"],
+  "categories": ["indemnification"],
+  "metadata": {
+    "source": "temp-java-sync",
+    "categories": ["indemnification"],
+    "review_guidance": "Indemnity should be mutual for confidentiality breaches; vendor-only indemnity requires Legal approval and gross negligence trigger.",
+    "preferred_position": "Each party shall indemnify the other against third-party claims arising from that party's gross negligence or willful misconduct."
+  },
+  "sections": [
+    {
+      "section_id": "4",
+      "title": "Indemnification",
+      "text": "Each party shall indemnify, defend, and hold harmless the other party against third-party claims arising from that party's gross negligence or willful misconduct."
+    }
+  ]
+}

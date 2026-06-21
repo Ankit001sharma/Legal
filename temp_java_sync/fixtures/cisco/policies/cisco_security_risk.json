@@ -1,0 +1,28 @@
+{
+  "tenant_id": "cisco-beta",
+  "policy_ref": "public-cisco-security-risk-2026",
+  "title": "Cisco Supplier Guide — Security & Risk (MSS, SCV, BCP)",
+  "policy_type": "vendor",
+  "applies_to_contract_types": ["vendor", "supplier", "msa"],
+  "categories": ["security", "risk"],
+  "metadata": {
+    "source": "public-web",
+    "source_company": "Cisco Systems, Inc.",
+    "source_document": "Cisco Supplier Guide — Security & Risk (Jan 2026)",
+    "categories": ["security", "risk"],
+    "review_guidance": "Suppliers must adhere to Master Security Specification (MSS). Participate in quarterly SCV surveys and BCP self-assessment audits every two years.",
+    "preferred_position": "Suppliers must adhere to Cisco Master Security Specification (MSS). Complete quarterly Supply Chain Visibility (SCV) surveys and business continuity self-assessment audits once every two years."
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Supply Chain Security",
+      "text": "Suppliers must adhere to Cisco Master Security Specification (MSS), which are security controls communicated to the supply chain ecosystem. Cisco monitors compliance through security audits, supplier business reviews, supplier self-assessments, and security risk reviews prior to business award."
+    },
+    {
+      "section_id": "2",
+      "title": "Risk and Business Continuity",
+      "text": "Cisco transmits a quarterly Supply Chain Visibility (SCV) survey to suppliers via the Supplier Collection Form. Self-assessment Business Continuity Plan (BCP) audit surveys are requested once every two years. Suppliers must document recovery strategies and compliance to Cisco BCP standards."
+    }
+  ]
+}

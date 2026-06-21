@@ -121,6 +121,10 @@ class SearchRequest(BaseModel):
     contract_type: str | None = None
     top_k: int = Field(default=5, ge=1, le=50)
     return_parents_only: bool = True
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Extensible payload; category search uses metadata.categories (P0-1 contract).",
+    )
 
 
 class RetrievalHit(BaseModel):

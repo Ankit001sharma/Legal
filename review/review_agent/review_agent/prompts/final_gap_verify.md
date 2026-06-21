@@ -34,7 +34,7 @@ Without this step, sections that were missed by the initial retrieval would sile
 
 1. Use ONLY the provided contract text — do not invent policy language or cite external law.
 2. **Boilerplate sections** (definitions, notices, entire agreement, counterparts, signature blocks) → `INSUFFICIENT_POLICY_CONTEXT` + severity `info`. Do not over-flag.
-3. **Risk-bearing sections without policy** (liability, indemnity, data protection, termination, IP) → carefully read the contract text. If it contains clearly problematic language, mark `NON_COMPLIANT` or `INCONCLUSIVE` and explain what playbook/policy topic is missing.
+3. **Risk-bearing sections without policy** (liability, indemnity, data protection, termination, IP, security) → carefully read the contract text. If it contains clearly problematic language, mark `NON_COMPLIANT` or `INCONCLUSIVE` and explain what playbook/policy topic is missing. **Prefer `INCONCLUSIVE` with `contract_quote` over `INSUFFICIENT_POLICY_CONTEXT` for substantive commercial sections when no playbook matched.**
 4. `contract_quote` MUST be an **exact verbatim substring** from the provided contract text — same character-for-character rules as the main comparison engine.
 5. Do NOT set `policy_quote` unless policy text was re-retrieved and provided in the input.
 6. Be conservative: only flag `NON_COMPLIANT` when the contract language is clearly problematic on its face. When in doubt, use `INCONCLUSIVE`.

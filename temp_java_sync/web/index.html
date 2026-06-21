@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Legal Review — Dev Test UI</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Legal Review Dev UI</h1>
+    <p class="subtitle">Java-sync substitute + prod review path (contract_document_id)</p>
+  </header>
+
+  <main class="layout">
+    <section class="panel config">
+      <h2>Configuration</h2>
+      <label>Document MCP URL<input id="docUrl" type="url" value="http://localhost:8003" /></label>
+      <label>Platform URL<input id="platformUrl" type="url" value="http://localhost:8080" /></label>
+      <label>Tenant ID<input id="tenantId" type="text" value="e2e-demo" /></label>
+      <div class="btn-row">
+        <button id="btnSaveConfig" class="secondary">Save config</button>
+        <button id="btnHealth">Check health</button>
+      </div>
+      <pre id="healthOut" class="log"></pre>
+    </section>
+
+    <section class="panel actions">
+      <h2>Test actions (fixtures)</h2>
+      <div class="btn-row wrap">
+        <button id="btnSync" class="primary">1. Java sync (NDA + policies)</button>
+        <button id="btnReview" class="primary">2. Run review (direct)</button>
+        <button id="btnReviewPlatform" class="primary">2b. Review via platform :8080</button>
+        <button id="btnTombstone" class="secondary">3. Tombstone smoke</button>
+        <button id="btnFullE2e" class="accent">Run full E2E</button>
+      </div>
+      <div id="status" class="status">Ready</div>
+      <div id="contractId" class="chip hidden"></div>
+    </section>
+
+    <section class="panel custom-docs">
+      <h2>Paste contract &amp; policies</h2>
+      <p class="panel-hint">Type or paste your contract sections and playbook policies below, then sync and review — no JSON files needed.</p>
+
+      <div class="custom-grid">
+        <div class="custom-block">
+          <h3>Contract</h3>
+          <label>Title<input id="customContractTitle" type="text" value="My Contract" /></label>
+          <label>Contract type<input id="customContractType" type="text" value="nda" placeholder="nda, msa, …" /></label>
+          <div id="contractSections" class="section-list"></div>
+          <button type="button" id="btnAddSection" class="secondary small">+ Add section</button>
+        </div>
+
+        <div class="custom-block">
+          <h3>Policies / playbooks</h3>
+          <div id="policyBlocks" class="policy-list"></div>
+          <button type="button" id="btnAddPolicy" class="secondary small">+ Add policy</button>
+        </div>
+      </div>
+
+      <div class="btn-row wrap custom-actions">
+        <button id="btnCustomReview" class="accent">Sync &amp; review my text</button>
+        <button id="btnCustomSync" class="secondary">Sync only (no review)</button>
+        <button id="btnLoadSample" class="secondary">Load sample NDA</button>
+      </div>
+    </section>
+
+    <section class="panel results">
+      <h2>Results</h2>
+      <div class="tabs">
+        <button class="tab active" data-tab="summary">Summary</button>
+        <button class="tab" data-tab="violations">Violations</button>
+        <button class="tab" data-tab="findings">All findings</button>
+        <button class="tab" data-tab="artifact">Audit</button>
+        <button class="tab" data-tab="raw">Raw JSON</button>
+      </div>
+      <div id="tab-summary" class="tab-pane active"><div id="summaryMd" class="markdown"></div></div>
+      <div id="tab-violations" class="tab-pane"><div id="violationsPanel"></div></div>
+      <div id="tab-findings" class="tab-pane"><div id="findingsTable"></div></div>
+      <div id="tab-artifact" class="tab-pane"><pre id="artifactJson" class="code"></pre></div>
+      <div id="tab-raw" class="tab-pane"><pre id="rawJson" class="code"></pre></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -24,8 +24,9 @@ def _section(section_id: str, text: str) -> IndexedChunk:
     )
 
 
-def _policy_hit(text: str) -> RetrievalHit:
+def _policy_hit(text: str, *, categories: list[str] | None = None) -> RetrievalHit:
     doc_id = uuid4()
+    metadata = {"categories": categories} if categories else {}
     chunk = IndexedChunk(
         chunk_id="p1",
         document_id=doc_id,
@@ -36,6 +37,7 @@ def _policy_hit(text: str) -> RetrievalHit:
         section_path="4",
         title="Policy",
         text=text,
+        metadata=metadata,
     )
     return RetrievalHit(parent_chunk=chunk, score=1.0)
 
@@ -76,6 +78,72 @@ async def test_compare_batch_returns_items(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_compare_rejects_cross_section_contract_quote(monkeypatch):
+    section_text = "Human rights obligations for suppliers."
+    wrong_quote = "Managed security services provider obligations."
+
+    async def _fake_invoke(_model, _schema, *, system, user):
+        return BatchSectionCompareLLMResult(
+            items=[
+                SectionCompareItem(
+                    section_id="s1",
+                    policy_section_id="4",
+                    dimension_label="Human Rights",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    severity=Severity.CRITICAL,
+                    contract_quote=wrong_quote,
+                    policy_quote="",
+                    rationale="Missing HR clause.",
+                    confidence=0.9,
+                )
+            ]
+        )
+
+    monkeypatch.setattr(section_compare_llm, "get_review_model", lambda **_: object())
+    monkeypatch.setattr(section_compare_llm, "invoke_structured", _fake_invoke)
+
+    section = _section("s1", section_text)
+    items, _warnings = await section_compare_llm.compare_section_batch(
+        [section],
+        {"s1": [_policy_hit("Policy requires HR standards.")]},
+    )
+    assert len(items) == 1
+    assert items[0].status == ComplianceStatus.INCONCLUSIVE
+    assert items[0].contract_quote == ""
+
+
+@pytest.mark.asyncio
+async def test_compare_drops_unknown_section_id(monkeypatch):
+    async def _fake_invoke(_model, _schema, *, system, user):
+        return BatchSectionCompareLLMResult(
+            items=[
+                SectionCompareItem(
+                    section_id="unknown",
+                    policy_section_id="4",
+                    dimension_label="Gap",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    severity=Severity.IMPORTANT,
+                    contract_quote="Some contract text long enough for review.",
+                    policy_quote="Policy text.",
+                    rationale="Issue.",
+                    confidence=0.8,
+                )
+            ]
+        )
+
+    monkeypatch.setattr(section_compare_llm, "get_review_model", lambda **_: object())
+    monkeypatch.setattr(section_compare_llm, "invoke_structured", _fake_invoke)
+
+    section = _section("s1", "Some contract text long enough for review.")
+    items, warnings = await section_compare_llm.compare_section_batch(
+        [section],
+        {"s1": [_policy_hit("Policy text.")]},
+    )
+    assert items == []
+    assert any("unknown section_id" in w for w in warnings)
+
+
+@pytest.mark.asyncio
 async def test_compare_failure_emits_insufficient(monkeypatch):
     async def _fake_invoke(*_args, **_kwargs):
         raise RuntimeError("llm unavailable")
@@ -87,3 +155,121 @@ async def test_compare_failure_emits_insufficient(monkeypatch):
     items, _warnings = await section_compare_llm.compare_section_batch([section], {"s1": [_policy_hit("policy")]})
     assert len(items) == 1
     assert items[0].status == ComplianceStatus.INSUFFICIENT_POLICY_CONTEXT
+
+
+@pytest.mark.asyncio
+async def test_compare_batch_retry_single(monkeypatch):
+    from review_agent.config import ReviewSettings
+
+    sections = [
+        _section("s1", "Liability is unlimited for all claims."),
+        _section("s2", "Termination requires thirty days notice."),
+    ]
+    calls = {"n": 0}
+    settings = ReviewSettings(compare_batch_retry_single=True)
+
+    async def _fake_invoke(_model, _schema, *, system, user):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("batch schema fail")
+        if "s1" in user:
+            return BatchSectionCompareLLMResult(
+                items=[
+                    SectionCompareItem(
+                        section_id="s1",
+                        policy_section_id="4",
+                        dimension_label="Liability",
+                        status=ComplianceStatus.NON_COMPLIANT,
+                        severity=Severity.CRITICAL,
+                        contract_quote="Liability is unlimited for all claims.",
+                        policy_quote="Liability shall not exceed twelve months fees.",
+                        rationale="Contract removes cap required by policy.",
+                        confidence=0.9,
+                    )
+                ]
+            )
+        if "s2" in user:
+            return BatchSectionCompareLLMResult(
+                items=[
+                    SectionCompareItem(
+                        section_id="s2",
+                        policy_section_id="4",
+                        dimension_label="Termination",
+                        status=ComplianceStatus.COMPLIANT,
+                        severity=Severity.INFO,
+                        contract_quote="Termination requires thirty days notice.",
+                        policy_quote="Either party may terminate with thirty days notice.",
+                        rationale="Notice period matches policy.",
+                        confidence=0.9,
+                    )
+                ]
+            )
+        raise AssertionError(f"unexpected invoke: {user}")
+
+    monkeypatch.setattr(section_compare_llm, "get_review_model", lambda **_: object())
+    monkeypatch.setattr(section_compare_llm, "invoke_structured", _fake_invoke)
+
+    hits = {
+        "s1": [_policy_hit("Liability shall not exceed twelve months fees.")],
+        "s2": [_policy_hit("Either party may terminate with thirty days notice.")],
+    }
+    items, _warnings = await section_compare_llm.compare_section_batch(
+        sections,
+        hits,
+        settings=settings,
+    )
+    assert calls["n"] == 3
+    assert len(items) == 2
+
+
+@pytest.mark.asyncio
+async def test_format_sections_primary_only_single_policy(monkeypatch):
+    from review_agent.config import ReviewSettings
+
+    contract_text = "Security controls are optional for the supplier."
+    policy_hr = "Human rights standards apply to all suppliers."
+    policy_sec = "Managed security services must meet MSS requirements."
+
+    async def _fake_invoke(_model, _schema, *, system, user):
+        assert policy_hr not in user
+        assert policy_sec in user
+        assert "**Policy 2**" not in user
+        return BatchSectionCompareLLMResult(
+            items=[
+                SectionCompareItem(
+                    section_id="s1",
+                    policy_section_id="4",
+                    dimension_label="Security",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    severity=Severity.CRITICAL,
+                    contract_quote="Security controls are optional for the supplier.",
+                    policy_quote="Managed security services must meet MSS requirements.",
+                    rationale="Contract makes security optional.",
+                    confidence=0.9,
+                )
+            ]
+        )
+
+    monkeypatch.setattr(section_compare_llm, "get_review_model", lambda **_: object())
+    monkeypatch.setattr(section_compare_llm, "invoke_structured", _fake_invoke)
+
+    section = _section("s1", contract_text)
+    hits = {
+        "s1": [
+            _policy_hit(policy_hr, categories=["human_resources"]),
+            _policy_hit(policy_sec, categories=["security"]),
+        ]
+    }
+    settings = ReviewSettings(
+        compare_policy_hit_mode="category_aligned",
+        compare_max_policy_hits=3,
+    )
+    items, _stats, batch_stats = await section_compare_llm.compare_all_sections(
+        [section],
+        hits,
+        settings=settings,
+        categories_by_section={"s1": ["security"]},
+    )
+    assert len(items) == 1
+    assert batch_stats["compare_hit_selection"]["category_aligned_sections"] == 1
+

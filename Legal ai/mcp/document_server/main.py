@@ -61,7 +61,13 @@ from document_core.services.search import (
     search_policy_recall,
 )
 from document_core.store.memory_store import get_store, set_store
-from mcp.document_server.config import SERVICE_NAME, VERSION, get_settings
+from mcp.document_server.config import (
+    MCP_CAPABILITIES,
+    SERVICE_NAME,
+    VERSION,
+    get_settings,
+    resolve_build_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +76,10 @@ class HealthResponse(BaseModel):
     status: str
     service: str
     version: str
+    build_id: str = ""
     store_backend: str = "pgvector"
     db: str = "ok"
+    capabilities: list[str] = Field(default_factory=list)
 
 
 class ListPoliciesRequest(BaseModel):
@@ -152,8 +160,10 @@ async def health() -> HealthResponse:
         status="ok" if db_status == "ok" else "degraded",
         service=SERVICE_NAME,
         version=VERSION,
+        build_id=resolve_build_id(),
         store_backend="pgvector",
         db=db_status,
+        capabilities=list(MCP_CAPABILITIES),
     )
 
 
@@ -261,7 +271,8 @@ async def search_policy_recall_tool(request: SearchRequest) -> dict[str, Any]:
 
 @app.post("/tools/search_policy_by_categories")
 async def search_policy_by_categories_tool(request: SearchRequest) -> dict[str, Any]:
-    categories = (request.metadata or {}).get("categories") or []
+    # Categories travel in SearchRequest.metadata.categories (see document_client.py).
+    categories = list((getattr(request, "metadata", None) or {}).get("categories") or [])
     if not categories:
         return {"results": []}
     hits = await search_policy_by_categories(

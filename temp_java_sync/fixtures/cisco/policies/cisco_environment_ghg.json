@@ -1,0 +1,23 @@
+{
+  "tenant_id": "cisco-beta",
+  "policy_ref": "public-cisco-environment-ghg-2026",
+  "title": "Cisco Supplier Guide — Environment & GHG",
+  "policy_type": "vendor",
+  "applies_to_contract_types": ["vendor", "supplier", "msa"],
+  "categories": ["environment", "sustainability"],
+  "metadata": {
+    "source": "public-web",
+    "source_company": "Cisco Systems, Inc.",
+    "source_document": "Cisco Supplier Guide — Environment (Jan 2026)",
+    "categories": ["environment", "sustainability"],
+    "review_guidance": "Suppliers must publish a public absolute GHG emissions reduction target and report emissions via CDP annually with third-party verification.",
+    "preferred_position": "Publish a public absolute greenhouse gas (GHG) emissions reduction target and report emissions data via CDP annually, including Scope 1, 2, and significant Scope 3 categories."
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Greenhouse Gas Emissions",
+      "text": "Supply chain hardware suppliers and service and logistics providers are required to report on GHG emissions to CDP on an annual basis. Provide a complete and accurate inventory of corporate-wide Scope 1 and 2 GHG emissions and report on significant categories of Scope 3. Make the response publicly available via CDP. Demonstrate third-party verification of reported GHG emissions. Set a public absolute GHG emissions reduction target and publicly report annual progress against that target."
+    }
+  ]
+}

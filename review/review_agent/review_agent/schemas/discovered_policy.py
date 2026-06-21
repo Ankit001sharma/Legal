@@ -12,3 +12,5 @@ class DiscoveredPolicy(BaseModel):
     match_score: float = 0.0
     matched_topics: list[str] = Field(default_factory=list)
     applies_to_contract_types: list[str] = Field(default_factory=list)
+    policy_group: str = ""
+    categories: list[str] = Field(default_factory=list)

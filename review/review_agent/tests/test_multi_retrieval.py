@@ -195,3 +195,49 @@ async def test_multi_retrieve_passes_document_ids_when_category_filter_set():
     )
     assert seen_document_ids
     assert str(category_id) in {str(doc_id) for doc_id in seen_document_ids[0]}
+
+
+@pytest.mark.asyncio
+async def test_retrieval_general_skips_hard_filter():
+    section = _section()
+    hit = _hit("scoped policy hit", "g1", 0.75)
+    category_filter_calls: list[list[str]] = []
+
+    class FakeClient:
+        async def list_policy_ids_by_categories(self, _tenant, categories, **_kwargs):
+            category_filter_calls.append(list(categories))
+            return []
+
+        async def search_policy_recall(self, _req):
+            return [hit]
+
+        async def search_policy_fts(self, _req):
+            return []
+
+        async def search_policy_by_categories(self, _req, *, categories):
+            return []
+
+    scope_id = str(uuid4())
+    classification = SectionCategoryResult(
+        section_id=section.section_id,
+        categories=["general"],
+        query_terms=["Limitation of Liability"],
+    )
+    settings = ReviewSettings(
+        retrieval_max_attempts=1,
+        retrieval_category_hard_filter=True,
+        retrieval_skip_hard_filter_for_general=True,
+    )
+    bundle = await multi_retrieve_for_section(
+        FakeClient(),
+        tenant_id="demo",
+        section=section,
+        contract_type="msa",
+        policy_type=None,
+        settings=settings,
+        classification=classification,
+        scope_document_ids=[scope_id],
+    )
+    assert category_filter_calls == []
+    assert len(bundle.policy_hits) == 1
+    assert bundle.retrieval_meta["attempts"][0]["category_hard_filter"] is False

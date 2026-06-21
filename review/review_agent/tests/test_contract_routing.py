@@ -105,3 +105,37 @@ async def test_route_contract_llm_fail_open(monkeypatch):
     )
     assert result.topics
     assert any("lexical" in w.lower() for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_route_contract_passes_review_plan_max_tokens(monkeypatch):
+    captured: dict = {}
+
+    def fake_get_review_model(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    async def _fake_invoke(_model, _schema, *, system, user):
+        return ContractRoutingResult(
+            contract_type="nda",
+            topics=["limitation of liability", "indemnification"],
+            section_titles=["Limitation of Liability"],
+        )
+
+    monkeypatch.setattr(
+        "review_agent.services.contract_routing.get_review_model",
+        fake_get_review_model,
+    )
+    monkeypatch.setattr(
+        "review_agent.services.contract_routing.invoke_structured",
+        _fake_invoke,
+    )
+    settings = ReviewSettings(contract_routing_mode="llm", review_plan_llm_max_tokens=1024)
+    result, _warnings = await route_contract(
+        contract_text=SAMPLE_CONTRACT,
+        contract_sections=[_section("Limitation of Liability")],
+        contract_type_hint="nda",
+        settings=settings,
+    )
+    assert result.topics
+    assert captured.get("max_tokens") == 1024

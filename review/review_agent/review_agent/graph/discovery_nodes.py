@@ -12,6 +12,7 @@ from review_agent.services.policy_discovery import (
     discovered_to_indexed_entries,
     parse_discovered_document_ids,
 )
+from review_agent.services.section_filter import filter_review_sections
 from review_agent.state.review_state import ReviewState
 
 
@@ -60,6 +61,10 @@ async def policy_discovery_node(state: ReviewState, client: DocumentMCPClient) -
     routing = state.get("contract_routing") or {}
     topics = routing.get("topics") or []
     contract_type = state.get("contract_type") or routing.get("contract_type")
+    reviewable = filter_review_sections(
+        state.get("contract_sections") or [],
+        min_chars=settings.review_min_section_chars,
+    )
 
     discovered, warnings, discovery_meta = await discover_policies_from_topics(
         client,
@@ -68,6 +73,8 @@ async def policy_discovery_node(state: ReviewState, client: DocumentMCPClient) -
         contract_type=contract_type,
         policy_type=state.get("policy_type"),
         settings=settings,
+        contract_sections=reviewable,
+        reviewable_section_count=len(reviewable),
     )
 
     doc_ids = parse_discovered_document_ids(discovered)

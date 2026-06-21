@@ -26,6 +26,11 @@ from review_agent.services.conflict_resolve import (
     emit_unresolved_policy_conflict,
 )
 from review_agent.services.section_merge import section_items_to_findings
+from review_agent.services.section_gap_status import upgrade_substantive_gap_finding
+from review_agent.services.unclear_recompare import (
+    eligible_for_unclear_recompare,
+    section_has_grounded_non_compliant,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,13 +105,51 @@ def _format_gaps_block(
 def _finding_ids_for_section(
     findings: list[ComplianceFinding],
     section_id: str,
+    *,
+    gap_types: frozenset[str] | None = None,
 ) -> list[str]:
+    allowed = gap_types or frozenset({"no_policy"})
     return [
         f.finding_id
         for f in findings
         if f.contract_section_id == section_id
-        and f.metadata.get("gap_type") == "no_policy"
+        and f.metadata.get("gap_type") in allowed
     ]
+
+
+def _split_gap_section_ids(
+    gap_section_ids: list[str],
+    *,
+    no_policy_gap_ids: list[str] | None,
+    compare_omitted_gap_ids: list[str] | None,
+    existing: list[ComplianceFinding],
+    bundles: dict[str, SectionRetrievalBundle],
+) -> tuple[list[str], list[str]]:
+    if no_policy_gap_ids is not None and compare_omitted_gap_ids is not None:
+        return list(no_policy_gap_ids), list(compare_omitted_gap_ids)
+
+    no_policy: list[str] = []
+    compare_omitted: list[str] = []
+    gap_set = set(gap_section_ids)
+    for finding in existing:
+        sid = finding.contract_section_id
+        if not sid or sid not in gap_set:
+            continue
+        gap_type = finding.metadata.get("gap_type")
+        if gap_type == "compare_omitted" and sid not in compare_omitted:
+            compare_omitted.append(sid)
+        elif gap_type == "no_policy" and sid not in no_policy:
+            no_policy.append(sid)
+
+    for sid in gap_section_ids:
+        if sid in no_policy or sid in compare_omitted:
+            continue
+        bundle = bundles.get(sid)
+        if bundle and bundle.policy_hits:
+            compare_omitted.append(sid)
+        else:
+            no_policy.append(sid)
+    return no_policy, compare_omitted
 
 
 def _conflict_context_by_section(
@@ -190,9 +233,42 @@ async def verify_gap_sections_llm(
                 continue
             section = next(s for s in batch if s.section_id == item.section_id)
             normalized = _normalize_gap_item(item, section_text_by_id[item.section_id])
-            findings.append(_gap_item_to_finding(normalized, section))
+            finding = _gap_item_to_finding(normalized, section)
+            findings.append(
+                upgrade_substantive_gap_finding(finding, section, settings=settings)
+            )
 
     return findings, warnings, failed
+
+
+def _resolve_recompare_finding_ids(
+    unclear_ids: list[str],
+    recompare_ids: list[str] | None,
+    findings_map: dict[str, ComplianceFinding],
+) -> list[str]:
+    if recompare_ids is not None:
+        return [fid for fid in recompare_ids if fid in findings_map]
+    return [
+        fid
+        for fid in unclear_ids
+        if fid in findings_map and eligible_for_unclear_recompare(findings_map[fid])
+    ]
+
+
+def _lowest_confidence_by_section(
+    finding_ids: list[str],
+    findings_map: dict[str, ComplianceFinding],
+) -> dict[str, float]:
+    scores: dict[str, float] = {}
+    for fid in finding_ids:
+        finding = findings_map[fid]
+        sid = finding.contract_section_id
+        if not sid:
+            continue
+        raw = (finding.metadata or {}).get("confidence")
+        conf = float(raw) if raw is not None else 1.0
+        scores[sid] = min(scores.get(sid, 1.0), conf)
+    return scores
 
 
 async def run_final_gap_verify(
@@ -202,7 +278,10 @@ async def run_final_gap_verify(
     sections_by_id: dict[str, IndexedChunk],
     bundles: dict[str, SectionRetrievalBundle],
     gap_section_ids: list[str],
+    no_policy_gap_ids: list[str] | None = None,
+    compare_omitted_gap_ids: list[str] | None = None,
     unclear_finding_ids: list[str] | None = None,
+    unclear_recompare_finding_ids: list[str] | None = None,
     conflict_pairs: list[tuple[str, str]] | None = None,
     existing_findings: list[ComplianceFinding] | None = None,
     contract_type: str | None,
@@ -222,6 +301,14 @@ async def run_final_gap_verify(
     if not gap_section_ids and not unclear_ids and not pairs:
         return [], [], {"skipped": True, "reason": "empty_work_queue"}, []
 
+    no_policy_ids, compare_omitted_ids = _split_gap_section_ids(
+        gap_section_ids,
+        no_policy_gap_ids=no_policy_gap_ids,
+        compare_omitted_gap_ids=compare_omitted_gap_ids,
+        existing=existing,
+        bundles=bundles,
+    )
+    gap_supersede_types = frozenset({"no_policy", "compare_omitted"})
     recall_settings = cfg.model_copy(
         update={"retrieval_recall_top_k": cfg.final_gap_recall_top_k}
     )
@@ -233,6 +320,9 @@ async def run_final_gap_verify(
     stats: dict[str, Any] = {
         "gap_sections": len(gap_section_ids),
         "unclear_findings": len(unclear_ids),
+        "unclear_recompare_eligible": 0,
+        "unclear_recompare_skipped": 0,
+        "unclear_recompare_capped": 0,
         "conflict_pairs": len(pairs),
         "re_retrieved": 0,
         "resolved_with_policy": 0,
@@ -241,10 +331,18 @@ async def run_final_gap_verify(
         "unclear_recompared": 0,
         "conflicts_recompared": 0,
         "conflicts_unresolved": 0,
+        "compare_omitted_recovered": 0,
     }
 
-    # Phase 1: re-retrieve gap sections with no policy hits
-    for section_id in gap_section_ids:
+    recompare_finding_ids = _resolve_recompare_finding_ids(
+        unclear_ids,
+        unclear_recompare_finding_ids,
+        findings_map,
+    )
+    stats["unclear_recompare_eligible"] = len(recompare_finding_ids)
+
+    # Phase 1: re-retrieve sections with no policy hits
+    for section_id in no_policy_ids:
         section = sections_by_id.get(section_id)
         if section is None:
             continue
@@ -284,7 +382,9 @@ async def run_final_gap_verify(
         warnings.extend(item_warnings)
         phase_findings = section_items_to_findings(items, pipeline="section_first_final")
         new_findings.extend(phase_findings)
-        superseded_ids.extend(_finding_ids_for_section(existing, section_id))
+        superseded_ids.extend(
+            _finding_ids_for_section(existing, section_id, gap_types=gap_supersede_types)
+        )
 
     resolved_gap_ids = {f.contract_section_id for f in new_findings if f.contract_section_id}
     if resolved_gap_ids:
@@ -292,10 +392,59 @@ async def run_final_gap_verify(
             f"final gap verify resolved {len(resolved_gap_ids)} section(s) after re-retrieve"
         )
 
-    # Phase 2: gap LLM for sections still without policy
+    # Phase 1b: re-compare sections where policy was retrieved but compare omitted
+    compare_omitted_to_run = [
+        sid
+        for sid in compare_omitted_ids
+        if sid in sections_by_id
+        and sid not in resolved_gap_ids
+        and bundles.get(sid)
+        and bundles[sid].policy_hits
+    ]
+    if compare_omitted_to_run:
+        batch_size = max(1, cfg.section_compare_batch_size)
+        for start in range(0, len(compare_omitted_to_run), batch_size):
+            batch_sids = compare_omitted_to_run[start : start + batch_size]
+            batch_sections = [sections_by_id[sid] for sid in batch_sids]
+            hits_map = {
+                sid: list(bundles[sid].policy_hits)
+                for sid in batch_sids
+                if bundles.get(sid) and bundles[sid].policy_hits
+            }
+            if not hits_map:
+                continue
+            items, item_warnings = await compare_section_batch(
+                batch_sections,
+                hits_map,
+                contract_type=contract_type,
+                memory_context=memory_context,
+                settings=cfg,
+            )
+            warnings.extend(item_warnings)
+            if items:
+                stats["compare_omitted_recovered"] += len(batch_sids)
+                new_findings.extend(
+                    section_items_to_findings(items, pipeline="section_first_final")
+                )
+                for sid in batch_sids:
+                    superseded_ids.extend(
+                        _finding_ids_for_section(
+                            existing,
+                            sid,
+                            gap_types=gap_supersede_types,
+                        )
+                    )
+        resolved_gap_ids = {f.contract_section_id for f in new_findings if f.contract_section_id}
+        if stats["compare_omitted_recovered"]:
+            warnings.append(
+                f"final gap verify re-compared {stats['compare_omitted_recovered']} "
+                "compare-omitted section(s)"
+            )
+
+    # Phase 2: gap LLM for no-policy sections still without hits
     still_gap_ids = [
         sid
-        for sid in gap_section_ids
+        for sid in no_policy_ids
         if sid in sections_by_id
         and sid not in resolved_gap_ids
         and not (bundles.get(sid) and bundles[sid].policy_hits)
@@ -314,7 +463,11 @@ async def run_final_gap_verify(
         for finding in gap_findings:
             if finding.contract_section_id:
                 superseded_ids.extend(
-                    _finding_ids_for_section(existing, finding.contract_section_id)
+                    _finding_ids_for_section(
+                        existing,
+                        finding.contract_section_id,
+                        gap_types=gap_supersede_types,
+                    )
                 )
         new_findings.extend(gap_findings)
         resolved_gap_ids.update(
@@ -327,42 +480,81 @@ async def run_final_gap_verify(
         if f.metadata.get("final_verify") == "gap_llm" and f.contract_section_id
     }
 
-    # Phase 3: unclear re-compare (sections with policy hits)
+    # Phase 3: unclear re-compare (low-confidence playbook compare only, capped + batched)
+    recompare_finding_id_set = set(recompare_finding_ids)
     unclear_sections: dict[str, IndexedChunk] = {}
     unclear_supersede: dict[str, list[str]] = {}
-    for fid in unclear_ids:
-        finding = findings_map.get(fid)
-        if finding is None or not finding.contract_section_id:
-            continue
-        sid = finding.contract_section_id
-        if sid in gap_llm_section_ids:
-            continue
-        bundle = bundles.get(sid)
-        if not bundle or not bundle.policy_hits:
-            continue
-        section = sections_by_id.get(sid)
-        if section is None:
-            continue
-        unclear_sections[sid] = section
-        unclear_supersede.setdefault(sid, [])
-        if fid not in unclear_supersede[sid]:
-            unclear_supersede[sid].append(fid)
+    if cfg.final_verify_unclear_recompare_enabled and recompare_finding_ids:
+        conf_by_section = _lowest_confidence_by_section(recompare_finding_ids, findings_map)
+        candidate_section_ids: list[str] = []
+        for fid in recompare_finding_ids:
+            finding = findings_map.get(fid)
+            if finding is None or not finding.contract_section_id:
+                continue
+            sid = finding.contract_section_id
+            if sid in gap_llm_section_ids:
+                continue
+            bundle = bundles.get(sid)
+            if not bundle or not bundle.policy_hits:
+                continue
+            section = sections_by_id.get(sid)
+            if section is None:
+                continue
+            if section_has_grounded_non_compliant(sid, existing):
+                stats["unclear_recompare_skipped"] += 1
+                continue
+            if sid not in unclear_sections:
+                unclear_sections[sid] = section
+                candidate_section_ids.append(sid)
+            unclear_supersede.setdefault(sid, [])
+            if fid not in unclear_supersede[sid]:
+                unclear_supersede[sid].append(fid)
 
-    for sid, section in unclear_sections.items():
-        bundle = bundles[sid]
-        hits_map = {sid: list(bundle.policy_hits)}
-        items, item_warnings = await compare_section_batch(
-            [section],
-            hits_map,
-            contract_type=contract_type,
-            memory_context=memory_context,
-            settings=cfg,
-        )
-        warnings.extend(item_warnings)
-        if items:
-            stats["unclear_recompared"] += 1
-            new_findings.extend(section_items_to_findings(items, pipeline="section_first_final"))
-            superseded_ids.extend(unclear_supersede.get(sid, []))
+        candidate_section_ids.sort(key=lambda sid: conf_by_section.get(sid, 1.0))
+        max_sections = max(0, cfg.final_verify_unclear_recompare_max_sections)
+        sections_to_recompare = candidate_section_ids[:max_sections]
+        if len(candidate_section_ids) > max_sections:
+            stats["unclear_recompare_capped"] = len(candidate_section_ids) - max_sections
+            warnings.append(
+                f"unclear re-compare capped at {max_sections} section(s) "
+                f"({len(candidate_section_ids)} eligible)."
+            )
+
+        batch_size = max(1, cfg.section_compare_batch_size)
+        for start in range(0, len(sections_to_recompare), batch_size):
+            batch_sids = sections_to_recompare[start : start + batch_size]
+            batch_sections = [unclear_sections[sid] for sid in batch_sids]
+            hits_map = {
+                sid: list(bundles[sid].policy_hits)
+                for sid in batch_sids
+                if bundles.get(sid) and bundles[sid].policy_hits
+            }
+            if not hits_map:
+                continue
+            items, item_warnings = await compare_section_batch(
+                batch_sections,
+                hits_map,
+                contract_type=contract_type,
+                memory_context=memory_context,
+                settings=cfg,
+            )
+            warnings.extend(item_warnings)
+            if items:
+                stats["unclear_recompared"] += len(batch_sids)
+                new_findings.extend(
+                    section_items_to_findings(items, pipeline="section_first_final")
+                )
+                for sid in batch_sids:
+                    superseded_ids.extend(
+                        fid
+                        for fid in unclear_supersede.get(sid, [])
+                        if fid in recompare_finding_id_set
+                    )
+    elif recompare_finding_ids and not cfg.final_verify_unclear_recompare_enabled:
+        stats["unclear_recompare_skipped"] = len(recompare_finding_ids)
+        warnings.append("unclear re-compare disabled by config.")
+    elif unclear_ids and not recompare_finding_ids:
+        stats["unclear_recompare_skipped"] = len(unclear_ids)
 
     # Phase 4: conflict re-compare
     conflict_context = _conflict_context_by_section(pairs, findings_map)

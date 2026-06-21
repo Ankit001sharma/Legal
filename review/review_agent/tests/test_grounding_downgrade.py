@@ -15,6 +15,7 @@ from document_core.schemas.chunk import (
 from document_core.schemas.compliance import ComplianceFinding, ComplianceStatus, Severity
 from review_agent.config import ReviewSettings
 from review_agent.graph.nodes import grounding_node
+from review_agent.services.grounding_quote import verify_quote_with_repair
 
 
 def _ingest_result() -> IngestResult:
@@ -53,6 +54,8 @@ async def test_grounding_downgrades_instead_of_drop(monkeypatch):
         lambda: ReviewSettings(
             grounding_downgrade_not_drop=True,
             grounding_rerun_coverage=False,
+            quote_repair_enabled=False,
+            guard_pass_enabled=False,
         ),
     )
     client = MagicMock()
@@ -95,6 +98,7 @@ async def test_grounding_rerun_coverage_backfill(monkeypatch):
             grounding_rerun_coverage=True,
             enforce_section_coverage=True,
             review_min_section_chars=10,
+            guard_pass_enabled=False,
         ),
     )
     client = MagicMock()
@@ -138,3 +142,29 @@ async def test_grounding_rerun_coverage_backfill(monkeypatch):
         f.contract_section_id == "s2"
         for f in result["grounded_findings"]
     )
+
+
+@pytest.mark.asyncio
+async def test_grounding_quote_rejects_section_mismatch():
+    async def _verify_mismatch(_request):
+        return GroundingCheckResult(
+            grounded=True,
+            quote="Managed security services",
+            normalized_quote="managed security services",
+            section_id="8",
+        )
+
+    quote, ok, meta = await verify_quote_with_repair(
+        MagicMock(),
+        tenant_id="demo",
+        document_id=uuid4(),
+        quote="Managed security services",
+        section_id="3",
+        settings=ReviewSettings(quote_repair_enabled=False),
+        stats={},
+        verify_fn=_verify_mismatch,
+    )
+    assert quote == "Managed security services"
+    assert ok is False
+    assert meta.get("grounding_section_mismatch") is True
+    assert meta.get("grounding_matched_section_id") == "8"
