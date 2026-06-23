@@ -116,8 +116,10 @@ class _Config:
 
         # ── Legal ai Retrieval MCP server ────────────────────────────────────
         self.RETRIEVAL_SERVER_URL: str = _env("RETRIEVAL_SERVER_URL", "http://localhost:8001")
-        self.RETRIEVAL_TIMEOUT_SECONDS: float = float(
-            _env("RETRIEVAL_TIMEOUT_SECONDS", "30")
+        # MCP legal-authority fan-out can run ~18s; keep client timeout above that.
+        self.RETRIEVAL_TIMEOUT_SECONDS: float = max(
+            45.0,
+            float(_env("RETRIEVAL_TIMEOUT_SECONDS", "60")),
         )
         self.RETRIEVAL_MAX_RETRIES: int = _int("RETRIEVAL_MAX_RETRIES", 3)
 
@@ -178,6 +180,18 @@ class _Config:
         # Skip the LLM semantic verifier (use deterministic checks only).
         # Recommended on Mistral free tier to avoid extra API calls / 429 errors.
         self.LLM_SKIP_VERIFIER: bool = _bool("LLM_SKIP_VERIFIER", False)
+
+        # ── Validation pipeline thresholds ───────────────────────────────────
+        self.MIN_TRUST_SCORE: int = _int("MIN_TRUST_SCORE", 40)
+        self.MIN_RELEVANCE_SCORE: int = _int("MIN_RELEVANCE_SCORE", 60)
+        self.MIN_COVERAGE_SCORE: int = _int("MIN_COVERAGE_SCORE", 70)
+        self.MAX_GAP_RESEARCH_ROUNDS: int = _int("MAX_GAP_RESEARCH_ROUNDS", 2)
+        self.ENABLE_LLM_RELEVANCE_SCORING: bool = _bool("ENABLE_LLM_RELEVANCE_SCORING", False)
+        self.ENABLE_SEMANTIC_CITATION_CHECK: bool = _bool("ENABLE_SEMANTIC_CITATION_CHECK", False)
+        self.MIN_CITATION_COVERAGE_PCT: float = float(
+            _env("MIN_CITATION_COVERAGE_PCT", "85")
+        )
+        self.VALIDATION_DOMAIN: str = _env("VALIDATION_DOMAIN", "legal").lower()
 
         # ── Normal Research mode (lightweight) ────────────────────────────────
         # Max search queries issued by the normal researcher loop (2-3 rounds).

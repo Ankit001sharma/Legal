@@ -42,4 +42,6 @@ class ResearchResponse(BaseModel):
     sources: list[RetrievalResult] = Field(default_factory=list)
     raw_notes: list[str] = Field(default_factory=list)
     verification: dict[str, Any] | None = None
+    metrics: dict[str, Any] | None = None
+    claims: list[dict[str, Any]] = Field(default_factory=list)
     awaiting_input: bool = False

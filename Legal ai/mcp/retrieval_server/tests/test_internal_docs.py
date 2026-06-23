@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -15,23 +15,17 @@ async def test_internal_docs_search_maps_results() -> None:
     client = InternalDocsClient(Settings())
 
     with patch(
-        "mcp.retrieval_server.integrations.internal_docs.embed_text",
-        new_callable=AsyncMock,
-        return_value=[0.1] * 384,
+        "mcp.retrieval_server.integrations.internal_docs.internal_file_store.search_documents",
+        return_value=[
+            {
+                "source_id": "internal:policy-1",
+                "title": "HR Policy",
+                "text_snippet": "Leave policy details",
+                "score": 0.9,
+            }
+        ],
     ):
-        with patch(
-            "mcp.retrieval_server.integrations.internal_docs.hybrid_search_tenant",
-            new_callable=AsyncMock,
-            return_value=[
-                {
-                    "source_id": "internal:policy-1",
-                    "title": "HR Policy",
-                    "text_snippet": "Leave policy details",
-                    "score": 0.9,
-                }
-            ],
-        ):
-            results = await client.search("leave policy", "tenant-a", 10)
+        results = await client.search("leave policy", "tenant-a", 10)
 
     assert len(results) == 1
     assert results[0].source_type == "internal"

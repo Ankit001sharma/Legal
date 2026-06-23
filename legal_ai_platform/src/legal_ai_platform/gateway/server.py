@@ -75,10 +75,9 @@ def _run_uvicorn() -> None:
 
 def main() -> None:
     settings = get_settings()
-    logging.basicConfig(
-        level=settings.platform_log_level,
-        format="%(levelname)s:     %(message)s",
-    )
+    from legal_ai_platform.observability.logging_setup import configure_logging
+
+    configure_logging(settings.platform_log_level)
     if settings.platform_http2:
         if not settings.platform_ssl_certfile or not settings.platform_ssl_keyfile:
             logger.error(

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import chat_history as history
 
@@ -47,7 +50,9 @@ def test_group_chats_by_period(tmp_path: Path, monkeypatch) -> None:
         [
             {"id": "a", "title": "Today chat", "updated_at": today},
             {"id": "b", "title": "Old chat", "updated_at": older},
-        ]
+        ],
+        tenant_id=None,
+        user_id="_unknown",
     )
 
     grouped = dict(history.group_chats_by_period(history.list_chats()))

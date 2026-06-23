@@ -1,0 +1,10 @@
+# Install from repo root (Legal_AI_FULL), not from inside "Legal ai":
+#   pip install -r requirements-editable.txt
+#   pip install -r "Legal ai/requirements.txt"
+#
+# Or install packages directly:
+#   pip install -e "./Legal_Ai_Research_Agent"
+#   pip install -e "./legal_ai_platform"
+
+-e ./Legal_Ai_Research_Agent
+-e ./legal_ai_platform

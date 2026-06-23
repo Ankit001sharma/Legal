@@ -1,6 +1,6 @@
 """Tests for scoping, supervisor, compaction, and report drafting nodes, including graceful degradation try-except blocks."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import (
@@ -35,13 +35,14 @@ def test_llm_call_degrades_gracefully():
     """Verify llm_call node handles model exception and returns warning message."""
     state = {"researcher_messages": [HumanMessage(content="test")]}
     
-    with patch("deep_research_from_scratch.research_agent.model_with_tools.invoke") as mock_invoke:
-        mock_invoke.side_effect = Exception("LLM connection refused")
-        
-        update = llm_call(state)
-        assert len(update["researcher_messages"]) == 1
-        assert "could not be completed due to an error" in update["researcher_messages"][0].content
-        assert "LLM connection refused" in update["researcher_messages"][0].content
+    with patch("deep_research_from_scratch.research_agent.cap_max_tokens_for_prompt", return_value=None):
+        with patch("deep_research_from_scratch.research_agent.invoke_with_retry") as mock_invoke:
+            mock_invoke.side_effect = Exception("LLM connection refused")
+
+            update = llm_call(state)
+            assert len(update["researcher_messages"]) == 1
+            assert "could not be completed due to an error" in update["researcher_messages"][0].content
+            assert "LLM connection refused" in update["researcher_messages"][0].content
 
 
 @pytest.mark.asyncio
@@ -55,15 +56,16 @@ async def test_supervisor_degrades_gracefully():
         research_iterations=0,
     )
     
-    with patch("deep_research_from_scratch.multi_agent_supervisor.supervisor_model_with_tools.ainvoke") as mock_ainvoke:
-        mock_ainvoke.side_effect = Exception("Anthropic API rate limit")
-        
-        cmd = await supervisor(state)
-        assert isinstance(cmd, Command)
-        assert cmd.goto == "supervisor_tools"
-        assert "Supervisor step failed" in cmd.update["supervisor_messages"][0].content
-        assert "Anthropic API rate limit" in cmd.update["supervisor_messages"][0].content
-        assert cmd.update["research_iterations"] == 1
+    with patch("deep_research_from_scratch.multi_agent_supervisor.cap_max_tokens_for_prompt", return_value=None):
+        with patch("deep_research_from_scratch.multi_agent_supervisor.ainvoke_with_retry") as mock_ainvoke:
+            mock_ainvoke.side_effect = Exception("Anthropic API rate limit")
+
+            cmd = await supervisor(state)
+            assert isinstance(cmd, Command)
+            assert cmd.goto == "supervisor_tools"
+            assert "Supervisor step failed" in cmd.update["supervisor_messages"][0].content
+            assert "Anthropic API rate limit" in cmd.update["supervisor_messages"][0].content
+            assert cmd.update["research_iterations"] == 1
 
 
 @pytest.mark.asyncio
@@ -76,9 +78,10 @@ async def test_final_report_generation_degrades_gracefully():
         verification_retries=0,
     )
     
-    with patch("deep_research_from_scratch.research_agent_full.writer_model.ainvoke") as mock_ainvoke:
-        mock_ainvoke.side_effect = Exception("Context window exceeded")
-        
+    with patch(
+        "deep_research_from_scratch.research_agent_full._invoke_writer",
+        new=AsyncMock(side_effect=Exception("Context window exceeded")),
+    ):
         update = await final_report_generation(state, config={"configurable": {"thread_id": "sess_writer"}})
         assert "final_report" in update
         assert "could not be generated due to an error" in update["final_report"]
@@ -134,6 +137,50 @@ def test_clarify_with_user_bypass_when_disabled():
         assert "Proceeding with research" in cmd.update["messages"][0].content
 
 
+def test_clarify_with_user_bypass_for_deep_mode():
+    """Deep research should start immediately without direction selection."""
+    state = AgentState(messages=[HumanMessage(content="Section 302 IPC")])
+
+    with patch("deep_research_from_scratch.research_agent_scope.app_config.ALLOW_CLARIFICATION", True):
+        cmd = clarify_with_user(
+            state,
+            config={"configurable": {"thread_id": "s1", "research_mode": "deep"}},
+        )
+        assert cmd.goto == "write_research_brief"
+        assert cmd.update["research_directions"] == []
+
+
+def test_clarify_with_user_greeting_fast_path():
+    """Greetings should get a direct reply and stop — no research, even in deep mode."""
+    state = AgentState(messages=[HumanMessage(content="hi")])
+
+    with patch("deep_research_from_scratch.research_agent_scope.app_config.ALLOW_CLARIFICATION", False):
+        cmd = clarify_with_user(state, config={"configurable": {"thread_id": "s1"}})
+        assert cmd.goto == "__end__"
+        assert "legal research assistant" in cmd.update["messages"][0].content.lower()
+        assert cmd.update["final_report"]
+
+    with patch("deep_research_from_scratch.research_agent_scope.app_config.ALLOW_CLARIFICATION", True):
+        cmd = clarify_with_user(
+            state,
+            config={"configurable": {"thread_id": "s1", "research_mode": "deep"}},
+        )
+        assert cmd.goto == "__end__"
+        assert cmd.update["research_directions"] == []
+
+
+def test_clarify_with_user_legal_question_not_greeting():
+    """Legal questions must still proceed to research in deep mode."""
+    state = AgentState(messages=[HumanMessage(content="Section 302 IPC")])
+
+    with patch("deep_research_from_scratch.research_agent_scope.app_config.ALLOW_CLARIFICATION", True):
+        cmd = clarify_with_user(
+            state,
+            config={"configurable": {"thread_id": "s1", "research_mode": "deep"}},
+        )
+        assert cmd.goto == "write_research_brief"
+
+
 def test_clarify_with_user_routing():
     """Verify clarify_with_user routes to END for directions/clarification and write_research_brief on proceed."""
     state = AgentState(messages=[HumanMessage(content="help")])
@@ -151,8 +198,8 @@ def test_clarify_with_user_routing():
     )
 
     with patch("deep_research_from_scratch.research_agent_scope.app_config.ALLOW_CLARIFICATION", True):
-        with patch("deep_research_from_scratch.research_agent_scope.model.with_structured_output") as mock_with_struct:
-            mock_with_struct.return_value.invoke.return_value = mock_directions
+        with patch("deep_research_from_scratch.research_agent_scope._get_model") as mock_get_model:
+            mock_get_model.return_value.with_structured_output.return_value.invoke.return_value = mock_directions
 
             cmd = clarify_with_user(state, config={"configurable": {"thread_id": "s1"}})
             assert cmd.goto == "__end__"
@@ -168,8 +215,8 @@ def test_clarify_with_user_routing():
         verification="",
     )
     with patch("deep_research_from_scratch.research_agent_scope.app_config.ALLOW_CLARIFICATION", True):
-        with patch("deep_research_from_scratch.research_agent_scope.model.with_structured_output") as mock_with_struct:
-            mock_with_struct.return_value.invoke.return_value = mock_ask
+        with patch("deep_research_from_scratch.research_agent_scope._get_model") as mock_get_model:
+            mock_get_model.return_value.with_structured_output.return_value.invoke.return_value = mock_ask
 
             cmd = clarify_with_user(state, config={"configurable": {"thread_id": "s1"}})
             assert cmd.goto == "__end__"
@@ -184,12 +231,30 @@ def test_clarify_with_user_routing():
         verification="Proceeding under Supreme Court rules.",
     )
     with patch("deep_research_from_scratch.research_agent_scope.app_config.ALLOW_CLARIFICATION", True):
-        with patch("deep_research_from_scratch.research_agent_scope.model.with_structured_output") as mock_with_struct:
-            mock_with_struct.return_value.invoke.return_value = mock_proceed
+        with patch("deep_research_from_scratch.research_agent_scope._get_model") as mock_get_model:
+            mock_get_model.return_value.with_structured_output.return_value.invoke.return_value = mock_proceed
 
             cmd = clarify_with_user(state, config={"configurable": {"thread_id": "s1"}})
             assert cmd.goto == "write_research_brief"
             assert cmd.update["messages"][0].content == "Proceeding under Supreme Court rules."
+
+    # Scenario 4: LLM returns direct_response for greeting-like input
+    state_hi = AgentState(messages=[HumanMessage(content="hello there friend")])
+    mock_direct = SuggestDirections(
+        action="direct_response",
+        direct_response="Hi! Ask me any Indian legal research question.",
+        research_directions=[],
+        direction_context="",
+        clarification_question="",
+        verification="",
+    )
+    with patch("deep_research_from_scratch.research_agent_scope.app_config.ALLOW_CLARIFICATION", True):
+        with patch("deep_research_from_scratch.research_agent_scope._get_model") as mock_get_model:
+            mock_get_model.return_value.with_structured_output.return_value.invoke.return_value = mock_direct
+
+            cmd = clarify_with_user(state_hi, config={"configurable": {"thread_id": "s1"}})
+            assert cmd.goto == "__end__"
+            assert "legal research question" in cmd.update["messages"][0].content.lower()
 
 
 # ===== 4. COMPACTION NODE WRAPPERS =====
@@ -241,7 +306,7 @@ async def test_supervisor_tools_gather_failure():
     with patch("deep_research_from_scratch.multi_agent_supervisor.researcher_agent.ainvoke") as mock_ainvoke:
         mock_ainvoke.side_effect = ValueError("Sub-agent process timeout")
         
-        cmd = await supervisor_tools(state)
+        cmd = await supervisor_tools(state, config={"configurable": {"thread_id": "sup_tools_test"}})
         assert isinstance(cmd, Command)
         assert cmd.goto == "__end__"
         # Since it exited cleanly due to exception, notes should be returned based on get_notes_from_tool_calls

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 class TaskClassifier:
@@ -29,6 +32,12 @@ class TaskClassifier:
         """Return the task type for a query using keyword rules."""
         for task_type, pattern in self._RULES:
             if pattern.search(query):
+                logger.info("classifier matched task_type=%s query_len=%d", task_type, len(query))
                 return task_type
 
+        logger.info(
+            "classifier default task_type=%s query_len=%d",
+            self.DEFAULT_TASK_TYPE,
+            len(query),
+        )
         return self.DEFAULT_TASK_TYPE

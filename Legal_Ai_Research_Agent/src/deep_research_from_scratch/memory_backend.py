@@ -20,16 +20,22 @@ pgvector/Qdrant for scale + semantic recall without rewrites.
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Protocol
 
 from deep_research_from_scratch.memory_namespace import get_active_namespace
 from deep_research_from_scratch.memory_tools import (
-    ENTRYPOINT_NAME,
+    RECENCY_HALF_LIFE_HOURS,
+    RECENCY_WEIGHT,
+    SIMILARITY_WEIGHT,
+    _keyword_similarity,
+    _parse_entry_timestamp,
+    _recency_score,
     get_auto_mem_path,
     load_transcript,
 )
+from deep_research_from_scratch.memory_store import search_memory_files, split_query_terms
 
 
 @dataclass
@@ -68,22 +74,16 @@ class FileMemoryBackend:
     """
 
     def _terms(self, query: str) -> List[str]:
-        return [t for t in re.split(r"\s+", (query or "").lower()) if t]
+        return split_query_terms(query)
 
     def search_longterm(self, query: str, k: int = 5) -> List[MemoryHit]:
         terms = self._terms(query)
         hits: List[MemoryHit] = []
         auto_dir = get_auto_mem_path(get_active_namespace())
-        for md_file in sorted(auto_dir.glob("*.md")):
-            if md_file.name == ENTRYPOINT_NAME:
-                continue
-            try:
-                text = md_file.read_text(encoding="utf-8")
-            except OSError:
-                continue
+        for name, text in search_memory_files(auto_dir, query):
             score = _keyword_score(text, terms) if terms else 1
             if score > 0:
-                hits.append(MemoryHit(text=text.strip(), source=md_file.name, score=float(score)))
+                hits.append(MemoryHit(text=text, source=name, score=float(score)))
         hits.sort(key=lambda h: h.score, reverse=True)
         return hits[:k]
 
@@ -91,16 +91,36 @@ class FileMemoryBackend:
         terms = self._terms(query)
         if not terms:
             return []
+
+        transcript = load_transcript(session_id)
+        # Exclude the verbatim recent window — those turns are already injected.
+        exclude_recent = 7
+        searchable = transcript[:-exclude_recent] if len(transcript) > exclude_recent else []
+        if not searchable:
+            return []
+
+        now = datetime.now()
         hits: List[MemoryHit] = []
-        for entry in load_transcript(session_id):
+        for i, entry in enumerate(searchable):
             msg = entry.get("message", {})
             text = msg.get("content", "")
             if not isinstance(text, str) or not text.strip():
                 continue
-            score = _keyword_score(text, terms)
-            if score > 0:
-                role = msg.get("role", entry.get("type", "unknown"))
-                hits.append(MemoryHit(text=f"[{role}] {text.strip()}", source=session_id, score=float(score)))
+            similarity = _keyword_similarity(text.strip(), terms)
+            if similarity <= 0:
+                continue
+            recency = _recency_score(
+                _parse_entry_timestamp(entry), now, RECENCY_HALF_LIFE_HOURS
+            )
+            combined = (SIMILARITY_WEIGHT * similarity) + (RECENCY_WEIGHT * recency)
+            role = msg.get("role", entry.get("type", "unknown"))
+            hits.append(
+                MemoryHit(
+                    text=f"[{role}] {text.strip()}",
+                    source=f"{session_id}:turn{i}",
+                    score=combined,
+                )
+            )
         hits.sort(key=lambda h: h.score, reverse=True)
         return hits[:k]
 

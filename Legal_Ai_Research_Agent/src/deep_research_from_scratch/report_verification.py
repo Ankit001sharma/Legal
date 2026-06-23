@@ -27,6 +27,7 @@ from typing_extensions import Literal
 from deep_research_from_scratch.config import config as app_config
 from deep_research_from_scratch.memory_tools import (
     get_session_id,
+    record_research_metrics,
     record_transcript,
     record_verification,
 )
@@ -55,10 +56,29 @@ from deep_research_from_scratch.source_registry import (
 from deep_research_from_scratch.report_sources import ensure_sources_section, linkify_citations
 from deep_research_from_scratch.state_scope import AgentState, VerificationResult
 from deep_research_from_scratch.utils import get_today_str
+from deep_research_from_scratch.validation.metrics import record_metrics_snapshot
+from deep_research_from_scratch.validation.pipeline import (
+    run_post_write_validation,
+    sanitize_report as sanitize_validated_report,
+)
 
 MAX_REVIEWER_RETRIES = app_config.MAX_REVIEWER_RETRIES
 
 REQUIRED_SECTIONS = [
+    "Executive Summary",
+    "Direct Answer",
+    "Key Findings",
+    "Supporting Evidence",
+    "Source Analysis",
+    "Counterpoints and Alternative Views",
+    "Risks and Limitations",
+    "Research Gaps",
+    "Confidence Assessment",
+    "References and Citations",
+]
+
+# Legacy IRAC sections — accepted when present (backward compatibility)
+_LEGACY_SECTIONS = [
     "Questions Presented",
     "Brief Answer",
     "Statement of Facts",
@@ -178,6 +198,10 @@ def deterministic_checks(
 
     report_low = (report or "").lower()
     missing_sections = [s for s in REQUIRED_SECTIONS if s.lower() not in report_low]
+    if missing_sections:
+        legacy_hits = sum(1 for s in _LEGACY_SECTIONS if s.lower() in report_low)
+        if legacy_hits >= 5 and "disclaimer" in report_low:
+            missing_sections = []
     disclaimer_present = "not legal advice" in report_low
 
     registry_urls = {normalize_url(s.url) for s in sources if s.url}
@@ -478,25 +502,69 @@ async def verify_report(state: AgentState, config: RunnableConfig) -> dict:
         overall_assessment=llm_out.overall_assessment,
     )
 
+    # Run full validation pipeline (Phases 2-10)
+    claims: list = []
+    metrics = None
     try:
-        record_verification(get_session_id(config), result.model_dump())
+        claims, metrics, pipeline_verification = run_post_write_validation(state, det)
+        # Merge pipeline results — pipeline is authoritative for claims/metrics
+        result.unsupported_claims = list(
+            set(result.unsupported_claims + pipeline_verification.unsupported_claims)
+        )
+        result.metrics = metrics
+        if not pipeline_verification.passed:
+            result.passed = False
+            if pipeline_verification.required_fixes:
+                result.required_fixes = (
+                    result.required_fixes + "\n" + pipeline_verification.required_fixes
+                ).strip()
+        if llm_out.overall_assessment and "rate-limit" in llm_out.overall_assessment.lower():
+            result.overall_assessment = llm_out.overall_assessment
+        else:
+            result.overall_assessment = (
+                pipeline_verification.overall_assessment or result.overall_assessment
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        audit_payload = result.model_dump()
+        if metrics:
+            audit_payload["quality_metrics"] = record_metrics_snapshot(metrics)
+            record_research_metrics(get_session_id(config), audit_payload["quality_metrics"])
+        record_verification(get_session_id(config), audit_payload)
     except Exception:  # noqa: BLE001
         pass
 
     return {
         "verification": result,
         "verification_retries": state.get("verification_retries", 0) + 1,
+        "validated_claims": claims,
+        "research_metrics": metrics,
     }
 
 
-def route_after_verify(state: AgentState) -> Literal["final_report_generation", "finalize_report"]:
-    """Decide whether to revise the memo or finalize it."""
+def route_after_verify(state: AgentState) -> Literal["final_report_generation", "sanitize_report"]:
+    """Decide whether to revise the memo or sanitize and finalize it."""
     verification = state.get("verification")
     if verification is not None and verification.passed:
-        return "finalize_report"
+        return "sanitize_report"
     if state.get("verification_retries", 0) > MAX_REVIEWER_RETRIES:
-        return "finalize_report"
+        return "sanitize_report"
     return "final_report_generation"
+
+
+def sanitize_report(state: AgentState, config: RunnableConfig) -> dict:
+    """Strip unsupported claims and append confidence/gap sections."""
+    report = state.get("final_report", "") or ""
+    claims = state.get("validated_claims") or []
+    metrics = state.get("research_metrics")
+    verification = state.get("verification")
+
+    if metrics and claims:
+        report = sanitize_validated_report(report, claims, metrics, verification)
+
+    return {"final_report": report}
 
 
 def _build_caveats_section(v: VerificationResult) -> str:
@@ -548,7 +616,10 @@ def finalize_report(state: AgentState, config: RunnableConfig) -> dict:
             report = redact_fabricated_citations(
                 report, verification.fabricated_or_unverified_citations
             )
-        report = report + "\n\n" + _build_caveats_section(verification)
+        # Structured metrics sections are added by sanitize_report; only append
+        # legacy caveats when metrics are unavailable.
+        if not (verification.metrics or state.get("research_metrics")):
+            report = report + "\n\n" + _build_caveats_section(verification)
 
     record_transcript(get_session_id(config), "assistant", report)
 

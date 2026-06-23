@@ -36,6 +36,8 @@ services:
       POSTGRES_DB: legalai
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Init script creates legalai_java database for the Java backend
+      - ./postgres-init:/docker-entrypoint-initdb.d
     networks:
       - legalai-internal
     expose:
@@ -51,8 +53,8 @@ services:
 
   db-migrate:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: Legal ai/Dockerfile
     container_name: legalai-db-migrate
     environment:
       DATABASE_URL: postgresql://legalai:legalai@postgres:5432/legalai
@@ -66,8 +68,8 @@ services:
 
   retrieval-mcp:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: Legal ai/Dockerfile
     container_name: retrieval-mcp
     ports:
       - "8002:8001"
@@ -79,6 +81,9 @@ services:
       DATABASE_URL: postgresql://legalai:legalai@postgres:5432/legalai
       EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
       SEMANTIC_HYBRID_ALPHA: 0.5
+      # Must match legal-ai-platform when AUTH_REQUIRED=false (dev default)
+      AUTH_REQUIRED: "false"
+      JWT_SECRET: legalai-jwt-secret-key-dev-only-change-in-production-256bits
     networks:
       - legalai-internal
     depends_on:
@@ -87,6 +92,96 @@ services:
       open-websearch:
         condition: service_healthy
     command: uvicorn mcp.retrieval_server.main:app --host 0.0.0.0 --port 8001
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  legal-ai-platform:
+    build:
+      context: ..
+      dockerfile: Legal ai/Dockerfile.platform
+    container_name: legal-ai-platform
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../legal_ai_platform/.env
+    environment:
+      PLATFORM_PORT: "8000"
+      PLATFORM_HOST: "0.0.0.0"
+      AUTH_REQUIRED: "false"
+      DATABASE_URL: postgresql://legalai:legalai@postgres:5432/legalai
+      RETRIEVAL_SERVER_URL: http://retrieval-mcp:8001
+      JWT_SECRET: legalai-jwt-secret-key-dev-only-change-in-production-256bits
+      PLATFORM_LOG_LEVEL: INFO
+    networks:
+      - legalai-internal
+    depends_on:
+      retrieval-mcp:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  java-backend:
+    build:
+      context: ../frontend_and_Java_backend/legalai-backend
+      dockerfile: Dockerfile
+    container_name: legalai-java-backend
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/legalai_java
+      SPRING_DATASOURCE_USERNAME: legalai
+      SPRING_DATASOURCE_PASSWORD: legalai
+      DB_URL: jdbc:postgresql://postgres:5432/legalai_java
+      DB_USERNAME: legalai
+      DB_PASSWORD: legalai
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      PYTHON_CLIENT_URL: http://legal-ai-platform:8000
+      JWT_SECRET: legalai-jwt-secret-key-dev-only-change-in-production-256bits
+      COOKIE_SECURE: "false"
+      APP_BASE_URL: http://localhost:8081/api/v1
+    networks:
+      - legalai-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      legal-ai-platform:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  frontend:
+    build:
+      context: ../frontend_and_Java_backend/legalai-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://172.27.151.4:8081/api/v1
+    container_name: legalai-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://172.27.151.4:8081/api/v1
+    networks:
+      - legalai-internal
+    depends_on:
+      java-backend:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
@@ -100,8 +195,8 @@ services:
 
   crawler-worker:
     build:
-      context: .
-      dockerfile: Dockerfile.crawler
+      context: ..
+      dockerfile: Legal ai/Dockerfile.crawler
     container_name: legalai-crawler-worker
     environment:
       DATABASE_URL: postgresql://legalai:legalai@postgres:5432/legalai
@@ -117,8 +212,8 @@ services:
 
   crawler-beat:
     build:
-      context: .
-      dockerfile: Dockerfile.crawler
+      context: ..
+      dockerfile: Legal ai/Dockerfile.crawler
     container_name: legalai-crawler-beat
     environment:
       DATABASE_URL: postgresql://legalai:legalai@postgres:5432/legalai

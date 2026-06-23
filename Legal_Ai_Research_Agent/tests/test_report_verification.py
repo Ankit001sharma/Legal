@@ -69,7 +69,7 @@ def test_deterministic_checks():
     bad_report_1 = "## Discussion\nBased on Zaheer Khan, (2006) 4 SCC 227."
     res = deterministic_checks(bad_report_1, findings, sources)
     assert res["passed"] is False
-    assert "Questions Presented" in res["missing_sections"]
+    assert len(res["missing_sections"]) > 0
     assert res["disclaimer_present"] is False
 
     # Report containing fabricated citation (not in findings)
@@ -241,7 +241,7 @@ def test_route_after_verify():
         verification=VerificationResult(passed=True),
         verification_retries=1,
     )
-    assert route_after_verify(state_pass) == "finalize_report"
+    assert route_after_verify(state_pass) == "sanitize_report"
 
     # Scenario 2: Verification failed, retries under limit (limit=2)
     state_fail_retry = AgentState(
@@ -255,7 +255,7 @@ def test_route_after_verify():
         verification=VerificationResult(passed=False),
         verification_retries=4,
     )
-    assert route_after_verify(state_fail_force) == "finalize_report"
+    assert route_after_verify(state_fail_force) == "sanitize_report"
 
 
 def test_deterministic_checks_uses_raw_notes_and_sources():
@@ -264,9 +264,10 @@ def test_deterministic_checks_uses_raw_notes_and_sources():
     report = (
         "## Questions Presented\n## Brief Answer\n## Statement of Facts\n"
         "## Discussion\nAs held in Virsa Singh v State of Punjab.\n"
-        "## Practical Guidance\n## Conclusion\n## Table of Authorities\n## Disclaimer\n"
+        "## Practical Guidance\n## Conclusion\n## Disclaimer\n"
         "This is not legal advice. See [1].\n\n### Sources\n"
-        "[1] Virsa Singh: https://indiankanoon.org/doc/1/\n"
+        "[1] Virsa Singh: https://indiankanoon.org/doc/1/\n\n"
+        "## Table of Authorities\n"
     )
     sources = [
         RetrievedSource(
@@ -304,7 +305,7 @@ def test_deterministic_checks_flags_access_denied_urls():
     report = (
         "## Questions Presented\n## Brief Answer\n## Statement of Facts\n"
         "## Discussion\nSee [1].\n## Practical Guidance\n## Conclusion\n"
-        "## Table of Authorities\n## Disclaimer\nThis is not legal advice.\n\n"
+        "## Disclaimer\nThis is not legal advice.\n\n"
         "### Sources\n[1] Paywalled: https://www.manupatra.com/doc/1/\n"
     )
     sources = [

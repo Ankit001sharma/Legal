@@ -11,9 +11,13 @@ Layout mirrors the agent's original ``memory_tools`` implementation:
 
 from __future__ import annotations
 
-import re
-import threading
 from pathlib import Path
+
+from deep_research_from_scratch.memory_store import (
+    ENTRYPOINT_NAME,
+    save_memory_file,
+    search_memory_files,
+)
 
 from mcp.retrieval_server.config import Settings
 from mcp.retrieval_server.logging_setup import get_logger
@@ -24,18 +28,6 @@ from mcp.retrieval_server.models import (
 )
 
 logger = get_logger(__name__)
-
-ENTRYPOINT_NAME = "MEMORY.md"
-
-# Serializes writes to MEMORY.md / detail files so concurrent requests cannot
-# corrupt the append-only index.
-_write_lock = threading.Lock()
-
-
-def _slugify(title: str) -> str:
-    """Turn a memory title into a safe filename slug."""
-    slug = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
-    return slug or "memory"
 
 
 class MemoryService:
@@ -50,37 +42,18 @@ class MemoryService:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def _append_index_pointer(
-        self, memory_dir: Path, title: str, filename: str, hook: str
-    ) -> None:
-        """Add (or replace) a pointer line in MEMORY.md for a saved memory file."""
-        entrypoint = memory_dir / ENTRYPOINT_NAME
-        pointer = f"- [{title}]({filename}) - {hook}"
-
-        with _write_lock:
-            existing = (
-                entrypoint.read_text(encoding="utf-8") if entrypoint.exists() else ""
-            )
-            lines = [ln for ln in existing.split("\n") if ln.strip()]
-            # Replace an existing pointer to the same file, else append.
-            lines = [ln for ln in lines if f"({filename})" not in ln]
-            if not lines:
-                lines = ["# MEMORY", ""]
-            lines.append(pointer)
-            entrypoint.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
     def save(
         self, title: str, content: str, hook: str, request_id: str = "-"
     ) -> MemorySaveResponse:
         """Save a durable memory to its own file and index it in MEMORY.md."""
         memory_dir = self._auto_dir()
-        filename = f"{_slugify(title)}.md"
-        file_path = memory_dir / filename
-
-        body = f"# {title}\n\n{content}\n"
-        with _write_lock:
-            file_path.write_text(body, encoding="utf-8")
-        self._append_index_pointer(memory_dir, title, filename, hook or title)
+        filename = save_memory_file(
+            memory_dir,
+            title,
+            content,
+            hook or title,
+            use_global_lock=True,
+        )
 
         logger.info(
             "memory saved",
@@ -98,16 +71,8 @@ class MemoryService:
     def search(self, query: str, request_id: str = "-") -> MemorySearchResponse:
         """Search saved memory files for query terms, returning matching files."""
         memory_dir = self._auto_dir()
-        terms = [t for t in re.split(r"\s+", query.lower()) if t]
-
-        results: list[MemoryMatch] = []
-        for md_file in sorted(memory_dir.glob("*.md")):
-            if md_file.name == ENTRYPOINT_NAME:
-                continue
-            text = md_file.read_text(encoding="utf-8")
-            haystack = text.lower()
-            if not terms or any(term in haystack for term in terms):
-                results.append(MemoryMatch(name=md_file.name, content=text.strip()))
+        matches = search_memory_files(memory_dir, query)
+        results = [MemoryMatch(name=name, content=content) for name, content in matches]
 
         logger.info(
             "memory searched",

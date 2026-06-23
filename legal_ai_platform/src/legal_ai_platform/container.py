@@ -8,6 +8,7 @@ Architecture:
 
 from __future__ import annotations
 
+import logging
 import os
 
 from legal_ai_platform.agents.research.research_agent import ResearchAgent
@@ -17,6 +18,8 @@ from legal_ai_platform.observability.hooks import HookRegistry
 from legal_ai_platform.orchestration.classifier import TaskClassifier
 from legal_ai_platform.orchestration.orchestrator import QueryOrchestrator
 from legal_ai_platform.orchestration.registry import AgentRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class PlatformContainer:
@@ -51,9 +54,15 @@ class PlatformContainer:
             timeout_seconds=self.settings.agent_timeout_seconds,
         )
         self.registry.register("research", research_agent)
+        logger.info(
+            "registered agents=%s retrieval_url=%s",
+            self.registry.list_task_types(),
+            self.settings.retrieval_server_url,
+        )
 
     async def shutdown(self) -> None:
         """Clean up resources on application shutdown."""
+        logger.info("shutting down platform container")
         await self.retrieval_client.close()
 
 

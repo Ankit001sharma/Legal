@@ -11,6 +11,7 @@ from langchain_core.messages import (
 )
 
 from deep_research_from_scratch.memory_tools import (
+    RecencyWeightedMemoryIndex,
     _safe_compaction_cut,
     build_session_context,
     compact_message_list,
@@ -20,8 +21,10 @@ from deep_research_from_scratch.memory_tools import (
     get_sessions_dir,
     get_transcript_path,
     read_legal_memories,
+    recall_older_session_turns,
     record_message,
     record_verification,
+    retrieve_recent_turns_only,
     update_legal_memory,
 )
 
@@ -145,7 +148,7 @@ def test_build_session_context_short(configure_test_memory_dir):
     context = build_session_context(session_id, keep_recent=5, threshold=10)
     assert "Question 1" in context
     assert "Answer 1" in context
-    assert "Running summary" not in context
+    assert "CURRENT TOPIC" in context
 
 
 def test_build_session_context_long(configure_test_memory_dir):
@@ -172,6 +175,71 @@ def test_build_session_context_long(configure_test_memory_dir):
     assert summary_data["summarized_count"] == 11  # 15 - 4 recent = 11 summarized
 
     # Verify return context contains summary and verbatim recent
-    assert "Running summary of earlier conversation" in context
-    assert "Most recent turns" in context
+    assert "CURRENT TOPIC" in context
+    assert "Earlier conversation (rolled-up summary)" in context
     assert "Turn 14 message details" in context  # Verbatim recent
+
+
+def test_retrieve_recent_turns_only(configure_test_memory_dir):
+    """Recent-window helper returns only the tail of the transcript."""
+    session_id = "test_recent_only"
+    for i in range(10):
+        record_message.invoke(
+            {"role": "user", "content": f"Message {i}"},
+            config={"configurable": {"thread_id": session_id}},
+        )
+
+    from deep_research_from_scratch.memory_tools import load_transcript
+
+    transcript = load_transcript(session_id)
+    recent = retrieve_recent_turns_only(transcript, k_recent=3)
+    assert len(recent) == 3
+    assert "Message 7" in recent[0]["message"]["content"]
+    assert "Message 9" in recent[-1]["message"]["content"]
+
+
+def test_recency_weighted_index_prefers_recent_topic():
+    """Older semantically similar turns should rank below more recent ones."""
+    from datetime import datetime, timedelta
+
+    index = RecencyWeightedMemoryIndex(recency_half_life_hours=48)
+    now = datetime.now()
+
+    old_entry = {
+        "timestamp": (now - timedelta(hours=72)).isoformat(),
+        "message": {"role": "user", "content": "What is punishment for murder under BNS?"},
+    }
+    recent_entry = {
+        "timestamp": (now - timedelta(minutes=5)).isoformat(),
+        "message": {"role": "user", "content": "What is punishment for theft under BNS?"},
+    }
+    index.add_entry(0, old_entry)
+    index.add_entry(1, recent_entry)
+
+    hits = index.retrieve_with_recency(
+        "punishment theft BNS",
+        current_timestamp=now,
+        k=2,
+    )
+    assert hits[0].turn_number == 1
+    assert "theft" in hits[0].text.lower()
+
+
+def test_recall_older_session_turns_excludes_recent_window(configure_test_memory_dir):
+    """Recall should not surface messages already in the recent verbatim window."""
+    session_id = "test_recall_window"
+    for i in range(10):
+        record_message.invoke(
+            {"role": "user", "content": f"Legal question {i} about contracts"},
+            config={"configurable": {"thread_id": session_id}},
+        )
+
+    recalled = recall_older_session_turns(
+        session_id,
+        "contracts legal question",
+        exclude_recent=3,
+        k=5,
+    )
+    assert "Legal question 9" not in recalled
+    assert "Legal question 8" not in recalled
+    assert "Legal question 7" not in recalled

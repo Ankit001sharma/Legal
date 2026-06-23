@@ -22,7 +22,8 @@ def test_linkify_citations_makes_inline_tokens_clickable():
     ]
     report = "The court held X [Indian Kanoon:1] on this point."
     out = linkify_citations(report, sources)
-    assert "[Indian Kanoon:1](https://indiankanoon.org/doc/123/)" in out
+    assert '<a href="https://indiankanoon.org/doc/123/"' in out
+    assert '[Indian Kanoon:1]</a>' in out
 
 
 def test_ensure_sources_section_uses_clickable_links():

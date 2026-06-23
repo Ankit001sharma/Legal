@@ -13,10 +13,11 @@ dependencies = [
     "pydantic-settings>=2.1.0",
     "python-dotenv>=1.0.0",
     "PyJWT>=2.8.0",
-    "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.0.0",
     "sqlalchemy>=2.0.0",
     "email-validator>=2.0.0",
-    "deep_research_from_scratch @ file:../Legal_Ai_Research_Agent",
+    # deep_research_from_scratch: install sibling package first (see requirements-editable.txt).
+    # Not listed here — pip resolves file:../ paths incorrectly when installing from repo root.
 ]
 
 [project.optional-dependencies]
@@ -37,8 +38,8 @@ build-backend = "setuptools.build_meta"
 [project.scripts]
 legal-ai-gateway = "legal_ai_platform.gateway.server:main"
 
-[tool.setuptools]
-packages = ["legal_ai_platform"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.package-dir]
-"legal_ai_platform" = "src/legal_ai_platform"
+"" = "src"

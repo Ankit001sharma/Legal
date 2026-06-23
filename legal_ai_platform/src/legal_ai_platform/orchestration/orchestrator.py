@@ -79,11 +79,25 @@ class QueryOrchestrator:
         """Process a user query end-to-end."""
         started = time.perf_counter()
         task_type, agent = self.resolve(request)
+        logger.info(
+            "orchestrator dispatch task_type=%s agent=%s session_id=%s query_len=%d",
+            task_type,
+            agent.agent_type,
+            request.session_id,
+            len(request.query),
+        )
 
         response = await agent.execute(request)
         response.task_type = task_type
 
         latency_ms = (time.perf_counter() - started) * 1000
+        logger.info(
+            "orchestrator completed task_type=%s success=%s awaiting_input=%s latency_ms=%.0f",
+            task_type,
+            response.success,
+            response.awaiting_input,
+            latency_ms,
+        )
         self.hooks.emit(
             Latency(operation="orchestrator.handle", latency_ms=latency_ms)
         )

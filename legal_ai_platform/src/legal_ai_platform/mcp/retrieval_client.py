@@ -1,29 +1,85 @@
-"""HTTP client for the Legal ai Retrieval MCP Server."""
+"""Typed HTTP client for the Legal ai Retrieval MCP Server."""
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
-from legal_ai_platform.mcp.base_client import BaseMCPClient
+from deep_research_from_scratch.mcp_client import (
+    CitationDirection,
+    RetrievalMCPClient as _RawRetrievalMCPClient,
+    SearchType,
+    SourceType,
+)
 from legal_ai_platform.models.retrieval import (
     CitationGraphResult,
     FetchResult,
     RetrievalResult,
 )
-
-SearchType = Literal["web", "internal", "all"]
-SourceType = Literal["web", "internal"]
-CitationDirection = Literal["incoming", "outgoing", "both"]
+from legal_ai_platform.observability.events import Failure, ToolCalled
+from legal_ai_platform.observability.hooks import HookRegistry
 
 
-class RetrievalMCPClient(BaseMCPClient):
-    """Client for the retrieval server's /tools/* endpoints.
+logger = logging.getLogger(__name__)
 
-    All methods normalize responses to platform domain models so future agents
-    consume a single ``RetrievalResult`` schema regardless of the underlying tool.
-    """
 
-    server_name = "retrieval-mcp"
+class RetrievalMCPClient(_RawRetrievalMCPClient):
+    """Retrieval MCP client that normalizes responses to platform domain models."""
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        timeout_seconds: float = 30.0,
+        max_retries: int = 3,
+        hooks: HookRegistry | None = None,
+        http_client: Any | None = None,
+    ) -> None:
+        super().__init__(
+            base_url,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            http_client=http_client,
+        )
+        self.hooks = hooks or HookRegistry()
+        logger.info(
+            "retrieval client initialized base_url=%s timeout_s=%s max_retries=%d",
+            base_url,
+            timeout_seconds,
+            max_retries,
+        )
+
+    def _emit_tool_called(
+        self,
+        *,
+        tool_name: str,
+        url: str,
+        latency_ms: float,
+        attempt: int,
+        success: bool,
+        error: str | None = None,
+    ) -> None:
+        metadata: dict[str, Any] = {"attempt": attempt, "url": url}
+        if error is not None:
+            metadata["error"] = error
+        self.hooks.emit(
+            ToolCalled(
+                tool_name=tool_name,
+                server=self.server_name,
+                latency_ms=latency_ms,
+                success=success,
+                metadata=metadata,
+            )
+        )
+
+    def _emit_failure(self, *, tool_name: str, error: str) -> None:
+        self.hooks.emit(
+            Failure(
+                operation=f"{self.server_name}.{tool_name}",
+                error=error,
+                recoverable=False,
+            )
+        )
 
     async def search(
         self,
@@ -34,21 +90,18 @@ class RetrievalMCPClient(BaseMCPClient):
         max_results: int = 10,
         tenant_id: str | None = None,
         filters: dict[str, Any] | None = None,
+        search_depth: Literal["normal", "deep"] = "normal",
     ) -> list[RetrievalResult]:
-        """Unified keyword search across web and internal docs."""
-        payload: dict[str, Any] = {
-            "query": query,
-            "search_type": search_type,
-            "jurisdiction": jurisdiction,
-            "max_results": max_results,
-        }
-        if tenant_id:
-            payload["tenant_id"] = tenant_id
-        if filters:
-            payload["filters"] = filters
-
-        data = await self._post("/tools/search", payload)
-        return [RetrievalResult.from_search_hit(hit) for hit in data.get("results", [])]
+        hits = await super().search(
+            query,
+            search_type=search_type,
+            jurisdiction=jurisdiction,
+            max_results=max_results,
+            tenant_id=tenant_id,
+            filters=filters,
+            search_depth=search_depth,
+        )
+        return [RetrievalResult.from_search_hit(hit) for hit in hits]
 
     async def search_notifications(
         self,
@@ -57,7 +110,6 @@ class RetrievalMCPClient(BaseMCPClient):
         max_results: int = 10,
         jurisdiction: str = "India",
     ) -> list[RetrievalResult]:
-        """Search government notifications via web index."""
         return await self.search(
             query,
             search_type="web",
@@ -75,18 +127,14 @@ class RetrievalMCPClient(BaseMCPClient):
         threshold: float = 0.7,
         tenant_id: str | None = None,
     ) -> list[RetrievalResult]:
-        """Vector semantic search."""
-        payload: dict[str, Any] = {
-            "query": query,
-            "search_type": search_type,
-            "top_k": top_k,
-            "threshold": threshold,
-        }
-        if tenant_id:
-            payload["tenant_id"] = tenant_id
-
-        data = await self._post("/tools/semantic_search", payload)
-        return [RetrievalResult.from_search_hit(hit) for hit in data.get("results", [])]
+        hits = await super().semantic_search(
+            query,
+            search_type=search_type,
+            top_k=top_k,
+            threshold=threshold,
+            tenant_id=tenant_id,
+        )
+        return [RetrievalResult.from_search_hit(hit) for hit in hits]
 
     async def fetch_and_extract(
         self,
@@ -96,17 +144,12 @@ class RetrievalMCPClient(BaseMCPClient):
         extract_sections: list[str] | None = None,
         tenant_id: str | None = None,
     ) -> FetchResult:
-        """Fetch and extract a full document."""
-        payload: dict[str, Any] = {
-            "source_id": source_id,
-            "source_type": source_type,
-        }
-        if extract_sections:
-            payload["extract_sections"] = extract_sections
-        if tenant_id:
-            payload["tenant_id"] = tenant_id
-
-        data = await self._post("/tools/fetch_and_extract", payload)
+        data = await super().fetch_and_extract(
+            source_id,
+            source_type,
+            extract_sections=extract_sections,
+            tenant_id=tenant_id,
+        )
         return FetchResult(
             source_id=data.get("source_id", source_id),
             source_type=data.get("source_type", source_type),
@@ -114,7 +157,11 @@ class RetrievalMCPClient(BaseMCPClient):
             full_text=data.get("full_text", ""),
             url=data.get("url", ""),
             sections=[
-                {"section_id": s.get("section_id", ""), "title": s.get("title", ""), "content": s.get("content", "")}
+                {
+                    "section_id": s.get("section_id", ""),
+                    "title": s.get("title", ""),
+                    "content": s.get("content", ""),
+                }
                 for s in data.get("sections", [])
             ],
             metadata=data.get("metadata") or {},
@@ -129,14 +176,12 @@ class RetrievalMCPClient(BaseMCPClient):
         depth: int = 1,
         direction: CitationDirection = "both",
     ) -> CitationGraphResult:
-        """Retrieve a citation graph for a legal source."""
-        payload = {
-            "source_id": source_id,
-            "source_type": source_type,
-            "depth": depth,
-            "direction": direction,
-        }
-        data = await self._post("/tools/citation_graph", payload)
+        data = await super().citation_graph(
+            source_id,
+            source_type,
+            depth=depth,
+            direction=direction,
+        )
         return CitationGraphResult(
             source_id=data.get("source_id", source_id),
             nodes=data.get("nodes", []),

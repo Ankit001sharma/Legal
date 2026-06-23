@@ -84,14 +84,37 @@ def enrich_agent_request(
     db: Session,
     auth_token: str | None = None,
 ) -> AgentRequest:
-    """Resolve tenant, authorize session, and attach principal fields."""
-    resolved_tenant = MemoryAccessPolicy.namespace_tenant_id(principal, body.tenant_id)
+    """Resolve tenant, authorize session, and attach principal fields.
+
+    When running as an internal service (auth_required=false) the Java gateway
+    passes real user context in the request body (user_id, role, tenant_id).
+    In that case we build the effective principal from the body rather than
+    using the anonymous dev fallback, so per-user memory isolation still works.
+    """
+    settings = get_settings()
+
+    # Service-mode: trust body-provided user context from Java gateway
+    if not settings.auth_required and body.user_id:
+        try:
+            body_role = UserRole(body.role) if body.role else UserRole.TENANT_USER
+        except ValueError:
+            body_role = UserRole.TENANT_USER
+        effective_principal = Principal(
+            user_id=body.user_id,
+            email=f"{body.user_id}@service",
+            role=body_role,
+            tenant_id=body.tenant_id,
+        )
+    else:
+        effective_principal = principal
+
+    resolved_tenant = MemoryAccessPolicy.namespace_tenant_id(effective_principal, body.tenant_id)
     session_id = body.session_id
-    if session_id and get_settings().auth_required:
+    if session_id and settings.auth_required:
         registry = SessionRegistry(db)
         _, access = registry.authorize(
             session_id=session_id,
-            principal=principal,
+            principal=effective_principal,
             tenant_id=resolved_tenant,
         )
         if not access.allowed:
@@ -100,18 +123,18 @@ def enrich_agent_request(
         registry = SessionRegistry(db)
         registry.authorize(
             session_id=session_id,
-            principal=principal,
+            principal=effective_principal,
             tenant_id=resolved_tenant,
         )
 
     return body.model_copy(
         update={
             "tenant_id": resolved_tenant,
-            "user_id": principal.user_id,
-            "role": principal.role.value,
+            "user_id": effective_principal.user_id,
+            "role": effective_principal.role.value,
             "context": {
                 **body.context,
-                "principal_email": principal.email,
+                "principal_email": effective_principal.email,
                 **({"auth_token": auth_token} if auth_token else {}),
             },
         }

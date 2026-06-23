@@ -6,9 +6,10 @@ from deep_research_from_scratch.search_tools import web_search
 
 
 def test_web_search_uses_mcp_provider():
-    def fake_provider(query, max_results, topic):
-        return f"legal-ai results for {query}"
+    with patch("deep_research_from_scratch.search_tools.run_search") as mock_run:
+        mock_run.return_value = ("legal-ai results for Article 21 Constitution", [])
 
-    with patch("deep_research_from_scratch.search_tools._default_mcp_provider", fake_provider):
         result = web_search.invoke({"query": "Article 21 Constitution"})
+
         assert result == "legal-ai results for Article 21 Constitution"
+        mock_run.assert_called_once_with("Article 21 Constitution", 5)

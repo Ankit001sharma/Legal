@@ -9,6 +9,8 @@ Pipeline:
         ↓
     compact_conversation
         ↓
+    clarify_with_user      (greeting/meta → direct reply; else route to brief)
+        ↓
     write_research_brief  (same brief, but tells the researcher to be concise)
         ↓
     normal_researcher     (simple search→fetch loop, 2-3 rounds max)
@@ -30,11 +32,13 @@ from langgraph.graph import END, START, StateGraph
 from deep_research_from_scratch.config import config as app_config
 from deep_research_from_scratch.model_config import (
     ainvoke_with_retry,
+    astream_with_retry,
     get_chat_model,
     invoke_with_retry,
 )
 from deep_research_from_scratch.memory_tools import get_session_id, record_transcript
 from deep_research_from_scratch.research_agent_scope import (
+    clarify_with_user,
     compact_conversation,
     load_memory,
 )
@@ -50,6 +54,7 @@ from deep_research_from_scratch.retrieval_bridge import (
 from deep_research_from_scratch.report_sources import linkify_citations
 from deep_research_from_scratch.source_registry import (
     RetrievedSource,
+    assign_source_indices,
     citation_label,
     extract_case_names,
     extract_citations,
@@ -59,17 +64,47 @@ from deep_research_from_scratch.source_registry import (
     source_from_fetch,
     sources_from_search_hits,
 )
-from deep_research_from_scratch.status_stream import emit_crawl_status, emit_search_status
+from deep_research_from_scratch.validation.pipeline import (
+    run_post_write_validation,
+    run_pre_write_validation,
+    sanitize_report as sanitize_validated_report,
+)
+from deep_research_from_scratch.status_stream import (
+    emit_crawl_status,
+    emit_search_status,
+    emit_think_step,
+    end_search_group,
+    group_end,
+    group_start,
+)
 from deep_research_from_scratch.utils import get_today_str
 
 # ── LLM instances ──────────────────────────────────────────────────────────────
 
-_answer_model = get_chat_model(
-    "writer",
-    max_tokens=app_config.NORMAL_ANSWER_MAX_TOKENS,
-)
-_brief_model = get_chat_model("reasoning", temperature=0.0)
-_search_model = get_chat_model("reasoning", temperature=0.0)
+_answer_model = None
+_brief_model = None
+_search_model = None
+
+
+def _get_answer_model():
+    global _answer_model
+    if _answer_model is None:
+        _answer_model = get_chat_model("writer", max_tokens=app_config.NORMAL_ANSWER_MAX_TOKENS)
+    return _answer_model
+
+
+def _get_brief_model():
+    global _brief_model
+    if _brief_model is None:
+        _brief_model = get_chat_model("reasoning", temperature=0.0)
+    return _brief_model
+
+
+def _get_search_model():
+    global _search_model
+    if _search_model is None:
+        _search_model = get_chat_model("reasoning", temperature=0.0)
+    return _search_model
 
 # ── Prompts ────────────────────────────────────────────────────────────────────
 
@@ -97,9 +132,10 @@ Return ONLY the queries, one per line, no numbering, no extra text.
 _ANSWER_PROMPT = """\
 You are an Indian legal research assistant writing a concise legal answer.
 
-LENGTH BUDGET: 400–800 words for the body (excluding the disclaimer). Shorter is better.
-This is Normal Research — a quick answer, NOT a full memorandum. Do not write long tables,
-multi-part ingredient lists, or exhaustive sub-sections.
+MODE: Normal Research — a quick answer, NOT a full memorandum.
+
+LENGTH BUDGET: 400–800 words for the body (excluding disclaimer). Shorter is better.
+Do not write long tables, multi-part ingredient lists, or exhaustive sub-sections.
 
 Research brief:
 {brief}
@@ -112,55 +148,96 @@ Source registry (the ONLY sources you may cite):
 
 Date: {date}
 {topic_checklist}
-══════════════════════════════════════════
-CRITICAL RULES
-══════════════════════════════════════════
-
-1. Ground every claim in retrieved sources only — no training-data fill-ins.
-   If sources are insufficient, say so briefly.
-
-2. Cite every legal claim with [Label:n] from the Source Registry (e.g. [Indian Kanoon:1]).
-   Never use bare [1]. Never bundle as [1,2].
-
-3. Cite only actual judgment (/doc/) or statute pages — not search-result pages.
-
-4. Do not invent case names. Mention a case only if it appears in the Source Registry.
-
-5. Mark snippet-only sources with "(snippet only — verify independently)" after the citation.
-
-6. Prefix key propositions with **[ESTABLISHED]**, **[LIKELY]**, **[UNCERTAIN]**, or **[NOT FOUND]**.
-
-7. If IPC/BNS choice matters, note the applicable code in one sentence.
-
-8. Topic checklist (if present) is for verification only — do NOT expand the answer to
-   cover every checkbox; mention only what retrieved sources support.
 
 ══════════════════════════════════════════
-OUTPUT FORMAT — USE THIS STRUCTURE ONLY
+1. CRITICAL RULES
+══════════════════════════════════════════
+
+1.1 Ground every claim in retrieved sources only — no training-data fill-ins.
+    If sources are insufficient, say so briefly.
+
+1.2 Cite every legal claim with [Label:n] from the Source Registry (e.g. [Indian Kanoon:1]).
+    Never use bare [1]. Never bundle as [1,2].
+    These tokens are rendered as clickable links in the UI — output them exactly as shown in the registry.
+
+1.3 On first mention of a case or statute, you MAY also write a markdown link using the registry URL:
+    [Case Name](URL) [Indian Kanoon:n] — but always include the [Label:n] token.
+
+1.4 Cite only actual judgment (/doc/) or statute pages — not search-result pages.
+
+1.5 Do not invent case names. Mention a case only if it appears in the Source Registry.
+
+1.6 Source quality labels — append after each citation where relevant:
+    - [fetched] — full text was retrieved
+    - [snippet only] — verify independently
+
+1.7 Confidence indicators — prefix key propositions with exactly one of:
+    **[ESTABLISHED]**, **[LIKELY]**, **[UNCERTAIN]**, or **[NOT FOUND]**
+
+1.8 Topic checklist (if present) is for verification only — do NOT expand the answer to
+    cover every checkbox; mention only what retrieved sources support.
+
+1.9 Do not use emojis or Unicode pictographs anywhere in the answer.
+
+══════════════════════════════════════════
+2. JURISDICTION & DATE-SENSITIVITY
+══════════════════════════════════════════
+
+2.1 Jurisdiction — state in the header (see §3):
+    - Default: India (Supreme Court + relevant High Court if identifiable from brief)
+    - If user named a state/court, use it; if unknown, write "Jurisdiction: India (state HC not specified)"
+
+2.2 Date-sensitivity (criminal / transitional law):
+    - If offence date is known: state whether IPC/CrPC/IEA (before 1 July 2024) or BNS/BNSS/BSA (from 1 July 2024) applies.
+    - If offence date is unknown and code choice matters: note the uncertainty in one sentence and cite whichever code the retrieved sources address.
+    - Never map IPC↔BNS section numbers from memory — only from retrieved statute text.
+
+══════════════════════════════════════════
+3. OUTPUT FORMAT — USE THIS STRUCTURE ONLY
 ══════════════════════════════════════════
 
 # [Short title]
 
+**Jurisdiction:** [India + state HC if known, or "not specified"]
 **Applicable law:** [Statute + section, if known]
+**Date sensitivity:** [Applicable code regime, or "N/A" for non-criminal / date not material]
+
+## Topic Snapshot
+
+[2–3 sentences: what the question is, why it matters practically, and the core legal issue.
+No citations, no case names.]
 
 ## Direct Answer
 
 **[ESTABLISHED/LIKELY/UNCERTAIN/NOT FOUND]** [2–4 sentences answering the question directly,
-with inline citations.]
+with inline [Label:n] citations and quality labels where applicable.]
+
+## Key Authorities
+
+Compact list only (max 5 entries) — not a full memo table:
+
+- [Label:n] [fetched/snippet only] — [Statute section or Case name, year] — [one-line role: e.g. "governing provision" / "leading SC holding"]
+
+Omit sources you did not cite. Use registry URLs if writing markdown links.
 
 ## Key Points
 
 - [3–5 bullet points max — statute rule, leading case holding, practical consequence]
-- [Each bullet with at least one citation where it states law]
+- [Each bullet with at least one [Label:n] citation where it states law]
 
 ## Analysis
 
 [1–2 short paragraphs weaving statute and at most 2 cases. For each case: one sentence on
 the holding/ratio only — no Facts/Issue/Holding/Ratio sub-headings. Skip cases not in sources.]
 
-## Practical Note
+## Next Steps
 
-[1–2 sentences of actionable guidance, grounded in sources.]
+[2–3 numbered, immediately actionable steps for the lawyer or client, each grounded in sources
+with [Label:n] where stating a legal basis.]
+
+1. [Specific action + forum/provision if applicable] [Label:n]
+2. [Second action]
+3. [Optional third action]
 
 ## Suggested Follow-up Queries
 
@@ -178,9 +255,13 @@ Format:
 
 *This is AI-assisted legal research; consult a lawyer for advice.*
 
-Do NOT include: Topic Snapshot, At a Glance tables, Key Statutes tables, Action Points,
-or comparison tables. Sources are appended separately — do not duplicate a full source list
-in the body.
+══════════════════════════════════════════
+4. DO NOT INCLUDE
+══════════════════════════════════════════
+
+- At a Glance tables, IPC/BNS comparison tables, Case Timeline, or Table of Authorities
+- Multi-issue IRAC subsections or exhaustive sub-headings
+- A duplicate full source list in the body (sources are appended separately by the system)
 """
 
 # ── Point 2: Judgment-page vs search-page detection ──────────────────────────
@@ -364,7 +445,7 @@ def _append_sources_section(report: str, sources: list[RetrievedSource]) -> str:
     Sources are grouped by type (Statutes → Case Law → Web) and labelled using
     the same [Label:n] tokens emitted by format_writer_source_registry, so every
     inline citation in the answer maps directly to a row in this table.
-    ✅ fetched = full text was retrieved; ⚠️ snippet only = only a search excerpt.
+    [fetched] = full text was retrieved; [snippet only] = only a search excerpt.
     """
     if not sources:
         return report
@@ -397,7 +478,7 @@ def _append_sources_section(report: str, sources: list[RetrievedSource]) -> str:
         line = f"{lbl} {link}"
         if src.citation:
             line += f" — {src.citation}"
-        line += "  ✅ fetched" if src.fetched else "  ⚠️ snippet only"
+        line += "  [fetched]" if src.fetched else "  [snippet only]"
         return line
 
     lines: list[str] = []
@@ -620,13 +701,16 @@ def _append_normal_caveats(content: str, det: dict) -> str:
 
 def write_normal_research_brief(state: AgentState, config: RunnableConfig) -> dict:
     """Transform the user query into a short research brief (not a full memo plan)."""
-    structured_output_model = _brief_model.with_structured_output(ResearchQuestion)
+    structured_output_model = _get_brief_model().with_structured_output(ResearchQuestion)
 
     latest_user_text = ""
     for msg in reversed(state.get("messages", [])):
         if isinstance(msg, HumanMessage) and isinstance(msg.content, str):
             latest_user_text = msg.content
             break
+
+    group_start("scope", "Understanding your query", "think")
+    emit_think_step("scope", "Reviewing conversation context")
 
     response = invoke_with_retry(
         structured_output_model,
@@ -640,6 +724,8 @@ def write_normal_research_brief(state: AgentState, config: RunnableConfig) -> di
             )
         ],
     )
+
+    group_end("scope", "Research brief ready")
 
     return {
         "research_brief": response.research_brief,
@@ -671,7 +757,7 @@ async def normal_researcher(state: AgentState, config: RunnableConfig) -> dict:
         date=get_today_str(),
     )
     planner_response = await ainvoke_with_retry(
-        _search_model,
+        _get_search_model(),
         [HumanMessage(content=planner_prompt)],
     )
     raw_queries = str(getattr(planner_response, "content", "") or "").strip()
@@ -750,6 +836,8 @@ async def normal_researcher(state: AgentState, config: RunnableConfig) -> dict:
     # Deduplicate by normalised URL so each source appears exactly once
     sources = merge_retrieved_sources(sources, [])
 
+    end_search_group()
+
     return {
         "notes": [findings],
         "raw_notes": [findings],
@@ -762,6 +850,9 @@ async def normal_researcher(state: AgentState, config: RunnableConfig) -> dict:
 
 async def generate_normal_answer(state: AgentState, config: RunnableConfig) -> dict:
     """Draft a concise answer from normal research findings."""
+    group_start("analyze", "Analyzing findings", "analyze")
+    emit_think_step("analyze", "Reviewing retrieved sources")
+
     brief = state.get("research_brief") or ""
     notes = state.get("notes") or []
     findings = "\n\n".join(notes) if notes else "No findings."
@@ -775,6 +866,10 @@ async def generate_normal_answer(state: AgentState, config: RunnableConfig) -> d
     # build the ordered citable list.  This SAME ordering defines [n] numbers —
     # we use it for both the LLM prompt and the appended ### Sources section.
     merged = merge_retrieved_sources(_collect_sources(state), [])
+    pre_validation = run_pre_write_validation(
+        {**state, "retrieved_sources": assign_source_indices(merged)}
+    )
+    merged = pre_validation.get("retrieved_sources") or merged
     citable = filter_citable_sources(merged)
 
     # Count how many sources have full text fetched (not just snippets)
@@ -802,6 +897,7 @@ async def generate_normal_answer(state: AgentState, config: RunnableConfig) -> d
         await asyncio.to_thread(
             record_transcript, get_session_id(config), "assistant", content, config
         )
+        group_end("analyze", "Insufficient sources")
         return {"final_report": content, "messages": [AIMessage(content=content)]}
 
     # Hard stop 2 (Point 6) — refuse when NO primary-tier sources were fetched.
@@ -828,6 +924,7 @@ async def generate_normal_answer(state: AgentState, config: RunnableConfig) -> d
         await asyncio.to_thread(
             record_transcript, get_session_id(config), "assistant", content, config
         )
+        group_end("analyze", "Insufficient sources")
         return {"final_report": content, "messages": [AIMessage(content=content)]}
 
     source_registry = format_writer_source_registry(citable)
@@ -838,7 +935,7 @@ async def generate_normal_answer(state: AgentState, config: RunnableConfig) -> d
     min_required = app_config.NORMAL_MIN_FETCHED_SOURCES
     if fetched_count < min_required:
         adequacy_warning = (
-            f"\n\n⚠️ SOURCE ADEQUACY WARNING: Only {fetched_count} of {len(citable)} sources "
+            f"\n\nSOURCE ADEQUACY WARNING: Only {fetched_count} of {len(citable)} sources "
             f"have full text fetched (minimum recommended: {min_required}). "
             "The remaining sources are search-snippet only. "
             "For EVERY legal claim where you do not have a fetched source: "
@@ -859,12 +956,21 @@ async def generate_normal_answer(state: AgentState, config: RunnableConfig) -> d
         topic_checklist=topic_checklist,
     ) + adequacy_warning
 
+    group_end("analyze", "Analysis complete")
+    group_start("write", "Writing legal answer", "write")
+    emit_think_step("write", f"Structuring answer with {len(citable)} sources")
+
     try:
-        result = await ainvoke_with_retry(
-            _answer_model,
+        content_parts: list[str] = []
+        async for chunk in astream_with_retry(
+            _get_answer_model(),
             [HumanMessage(content=prompt)],
-        )
-        content = str(getattr(result, "content", "") or "").strip()
+            config=config,
+        ):
+            part = str(getattr(chunk, "content", "") or "")
+            if part:
+                content_parts.append(part)
+        content = "".join(content_parts).strip()
     except Exception as exc:  # noqa: BLE001
         content = (
             "# Legal Research Answer\n\n"
@@ -897,11 +1003,26 @@ async def generate_normal_answer(state: AgentState, config: RunnableConfig) -> d
     content = _append_sources_section(content, citable)
     content = linkify_citations(content, citable)
 
+    # Lightweight post-write validation (claim + citation checks)
+    validation_state = {
+        **state,
+        "final_report": content,
+        "retrieved_sources": citable,
+        "source_validations": pre_validation.get("source_validations", []),
+    }
+    claims, metrics, _verification = run_post_write_validation(validation_state, det)
+    content = sanitize_validated_report(content, claims, metrics, None)
+
     record_transcript(get_session_id(config), "assistant", content, config)
+
+    group_end("write", "Answer complete")
 
     return {
         "final_report": content,
         "messages": [AIMessage(content=content)],
+        "retrieved_sources": merged,
+        "validated_claims": claims,
+        "research_metrics": metrics,
     }
 
 
@@ -911,13 +1032,14 @@ normal_researcher_builder = StateGraph(AgentState, input_schema=AgentInputState)
 
 normal_researcher_builder.add_node("load_memory", load_memory)
 normal_researcher_builder.add_node("compact_conversation", compact_conversation)
+normal_researcher_builder.add_node("clarify_with_user", clarify_with_user)
 normal_researcher_builder.add_node("write_research_brief", write_normal_research_brief)
 normal_researcher_builder.add_node("normal_researcher", normal_researcher)
 normal_researcher_builder.add_node("generate_normal_answer", generate_normal_answer)
 
 normal_researcher_builder.add_edge(START, "load_memory")
 normal_researcher_builder.add_edge("load_memory", "compact_conversation")
-normal_researcher_builder.add_edge("compact_conversation", "write_research_brief")
+normal_researcher_builder.add_edge("compact_conversation", "clarify_with_user")
 normal_researcher_builder.add_edge("write_research_brief", "normal_researcher")
 normal_researcher_builder.add_edge("normal_researcher", "generate_normal_answer")
 normal_researcher_builder.add_edge("generate_normal_answer", END)

@@ -20,6 +20,7 @@ from langchain_core.messages import (
     ToolMessage,
     filter_messages,
 )
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 from typing_extensions import Literal
@@ -33,6 +34,7 @@ from deep_research_from_scratch.model_config import (
 )
 from deep_research_from_scratch.prompts import lead_researcher_prompt
 from deep_research_from_scratch.research_agent import researcher_agent
+from deep_research_from_scratch.status_stream import astream_with_progress
 from deep_research_from_scratch.state_multi_agent_supervisor import (
     ConductResearch,
     ResearchComplete,
@@ -79,8 +81,14 @@ from deep_research_from_scratch.config import config
 # Tool LIST (named distinctly from the supervisor_tools NODE function below to
 # avoid the name shadowing the list once the function is defined).
 SUPERVISOR_TOOLS = [ConductResearch, ResearchComplete, think_tool]
-supervisor_model = get_chat_model("supervisor")
-supervisor_model_with_tools = supervisor_model.bind_tools(SUPERVISOR_TOOLS)
+_supervisor_model_with_tools = None
+
+
+def _get_supervisor_model_with_tools():
+    global _supervisor_model_with_tools
+    if _supervisor_model_with_tools is None:
+        _supervisor_model_with_tools = get_chat_model("supervisor").bind_tools(SUPERVISOR_TOOLS)
+    return _supervisor_model_with_tools
 
 # System constants (centralized in config.py)
 # Maximum number of tool call iterations for individual researcher agents;
@@ -142,9 +150,9 @@ async def supervisor(state: SupervisorState) -> Command[Literal["supervisor_tool
             requested_max_tokens=8192,
         )
         model = (
-            supervisor_model_with_tools.bind(max_tokens=safe_max_tokens)
+            _get_supervisor_model_with_tools().bind(max_tokens=safe_max_tokens)
             if safe_max_tokens is not None
-            else supervisor_model_with_tools
+            else _get_supervisor_model_with_tools()
         )
         response = await ainvoke_with_retry(model, messages)
     except Exception as e:  # noqa: BLE001
@@ -158,7 +166,9 @@ async def supervisor(state: SupervisorState) -> Command[Literal["supervisor_tool
         }
     )
 
-async def supervisor_tools(state: SupervisorState) -> Command[Literal["compact_supervisor_context", "__end__"]]:
+async def supervisor_tools(
+    state: SupervisorState, config: RunnableConfig
+) -> Command[Literal["compact_supervisor_context", "__end__"]]:
     """Execute supervisor decisions - either conduct research or end the process.
 
     Handles:
@@ -231,6 +241,9 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["compact_s
                 )
                 seed_searches = len(seed_sources)
 
+                child_config = dict(config or {})
+                child_config.setdefault("recursion_limit", 150)
+
                 coros = []
                 for tool_call in conduct_research_calls:
                     topic = tool_call["args"]["research_topic"]
@@ -242,18 +255,22 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["compact_s
                             + bootstrap_notes
                         )
                     coros.append(
-                        researcher_agent.ainvoke({
-                            "researcher_messages": [HumanMessage(content=content)],
-                            "research_topic": topic,
-                            "retrieved_sources": seed_sources,
-                            "fetch_count": seed_fetches,
-                            "search_count": seed_searches,
-                            "fetch_gate_retries": 0,
-                            "tool_call_iterations": 0,
-                        })
+                        astream_with_progress(
+                            researcher_agent,
+                            {
+                                "researcher_messages": [HumanMessage(content=content)],
+                                "research_topic": topic,
+                                "retrieved_sources": seed_sources,
+                                "fetch_count": seed_fetches,
+                                "search_count": seed_searches,
+                                "fetch_gate_retries": 0,
+                                "tool_call_iterations": 0,
+                            },
+                            config=child_config,
+                        )
                     )
 
-                # Wait for all research to complete
+                # Wait for all research to complete (progress streams live via astream_with_progress)
                 tool_results = await asyncio.gather(*coros)
 
                 # Format research results as tool messages

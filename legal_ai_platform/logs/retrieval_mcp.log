@@ -1,0 +1,12 @@
+2026-06-20T06:26:11.334323Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=15.0
+2026-06-20T06:26:11.704857Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None
+2026-06-20T06:26:11.729553Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=15.0
+2026-06-20T06:26:12.078598Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None
+2026-06-20T06:26:12.105762Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=15.0
+2026-06-20T06:26:12.419845Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None
+2026-06-20T06:26:46.047461Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=15.0
+2026-06-20T06:26:46.284539Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None
+2026-06-20T06:26:46.309125Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=15.0
+2026-06-20T06:26:46.580594Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None
+2026-06-20T06:26:46.605400Z INFO mcp.retrieval_server.main service starting service=retrieval-mcp version=0.1.0 log_level=INFO websearch_backend=duckduckgo websearch_base_url=http://localhost:3002 external_timeout_seconds=15.0
+2026-06-20T06:26:46.928623Z INFO mcp.retrieval_server.integrations.web_search web_search client configured backend=duckduckgo base_url=None

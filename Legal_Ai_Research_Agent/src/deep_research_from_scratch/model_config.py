@@ -195,7 +195,7 @@ def _rate_limit_max_wait() -> float:
     return float(_env("LLM_RATE_LIMIT_MAX_WAIT") or 45.0)
 
 
-async def ainvoke_with_retry(runnable, input, *, max_retries: int | None = None):
+async def ainvoke_with_retry(runnable, input, *, config=None, max_retries: int | None = None):
     """Invoke an async runnable, retrying with backoff on HTTP 429 rate limits."""
     retries = max_retries if max_retries is not None else _rate_limit_retries()
     delay = _rate_limit_base_delay()
@@ -205,6 +205,8 @@ async def ainvoke_with_retry(runnable, input, *, max_retries: int | None = None)
 
     for attempt in range(retries + 1):
         try:
+            if config is not None:
+                return await runnable.ainvoke(input, config=config)
             return await runnable.ainvoke(input)
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
@@ -220,6 +222,39 @@ async def ainvoke_with_retry(runnable, input, *, max_retries: int | None = None)
     if last_exc is not None:
         raise last_exc
     raise RuntimeError("ainvoke_with_retry failed without an exception")
+
+
+async def astream_with_retry(runnable, input, *, config=None, max_retries: int | None = None):
+    """Stream an async runnable, retrying with backoff on HTTP 429 rate limits."""
+    retries = max_retries if max_retries is not None else _rate_limit_retries()
+    delay = _rate_limit_base_delay()
+    max_wait = _rate_limit_max_wait()
+    started = time.perf_counter()
+    last_exc: Exception | None = None
+
+    for attempt in range(retries + 1):
+        try:
+            if config is not None:
+                async for chunk in runnable.astream(input, config=config):
+                    yield chunk
+            else:
+                async for chunk in runnable.astream(input):
+                    yield chunk
+            return
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if not is_rate_limit_error(exc) or attempt >= retries:
+                raise
+            elapsed = time.perf_counter() - started
+            remaining = max_wait - elapsed
+            if remaining <= 0:
+                raise
+            wait = min(delay * (2**attempt) + random.uniform(0, 1.5), remaining)
+            await asyncio.sleep(wait)
+
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("astream_with_retry failed without an exception")
 
 
 def invoke_with_retry(runnable, input, *, max_retries: int | None = None):

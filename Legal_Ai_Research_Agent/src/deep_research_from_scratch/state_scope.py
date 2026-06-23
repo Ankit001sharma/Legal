@@ -14,6 +14,12 @@ from pydantic import BaseModel, Field
 from typing_extensions import Annotated, List, Literal, Optional, Sequence
 
 from deep_research_from_scratch.source_registry import RetrievedSource, merge_retrieved_sources
+from deep_research_from_scratch.validation.models import (
+    EvidenceSnippet,
+    ResearchQualityMetrics,
+    SourceValidation,
+    ValidatedClaim,
+)
 
 # ===== STATE DEFINITIONS =====
 
@@ -47,14 +53,22 @@ class AgentState(MessagesState):
     retrieved_sources: Annotated[list[RetrievedSource], merge_retrieved_sources] = []
     # Research directions suggested to user before research starts (transient, one-turn)
     research_directions: list[str] = []
+    # Validation pipeline outputs
+    source_validations: list[SourceValidation] = []
+    evidence_pack: list[EvidenceSnippet] = []
+    validated_claims: list[ValidatedClaim] = []
+    research_metrics: ResearchQualityMetrics | None = None
+    coverage_gap_queries: list[str] = []
+    gap_research_retries: int = 0
 
 # ===== STRUCTURED OUTPUT SCHEMAS =====
 
 class SuggestDirections(BaseModel):
     """Schema for the pre-research direction selection / clarification gate."""
 
-    action: Literal["suggest_directions", "ask_clarification", "proceed"] = Field(
+    action: Literal["suggest_directions", "ask_clarification", "proceed", "direct_response"] = Field(
         description=(
+            "direct_response: greeting, meta, or off-topic — reply directly without research. "
             "suggest_directions: present 3–4 research angles as clickable options. "
             "ask_clarification: ask ONE focused fact question (e.g. offence date, jurisdiction). "
             "proceed: start research immediately."
@@ -75,6 +89,10 @@ class SuggestDirections(BaseModel):
     verification: str = Field(
         default="",
         description="Brief acknowledgement when action == proceed. Empty otherwise.",
+    )
+    direct_response: str = Field(
+        default="",
+        description="Friendly reply when action == direct_response. Empty otherwise.",
     )
 
 class ResearchQuestion(BaseModel):
@@ -131,4 +149,8 @@ class VerificationResult(BaseModel):
     overall_assessment: str = Field(
         default="",
         description="Short narrative summary of the review.",
+    )
+    metrics: ResearchQualityMetrics | None = Field(
+        default=None,
+        description="Aggregate quality metrics from the validation pipeline.",
     )

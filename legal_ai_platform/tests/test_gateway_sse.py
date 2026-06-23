@@ -10,7 +10,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from legal_ai_platform.agents.base.base_agent import BaseAgent
+from legal_ai_platform.config import get_settings
 from legal_ai_platform.container import PlatformContainer, reset_container
+from legal_ai_platform.db.session import init_db
 from legal_ai_platform.gateway.app import app
 from legal_ai_platform.models.agent import AgentRequest, AgentResponse
 from legal_ai_platform.models.task_types import TaskType
@@ -34,21 +36,46 @@ class _StubSSEAgent(BaseAgent):
     async def execute_sse_stream(
         self, request: AgentRequest
     ) -> AsyncGenerator[dict[str, Any], None]:
-        yield {"status": "thinking", "label": "Analyzing your query…"}
-        yield {"status": "searching", "label": "Querying Indian Kanoon", "query": "test"}
         yield {
-            "status": "crawling",
-            "label": "Reading judgment",
-            "url": "https://indiankanoon.org/doc/1/",
+            "event": "group_start",
+            "group_id": "search_web",
+            "group_title": "Searching the web",
+            "group_icon": "search",
+            "timestamp_ms": 1,
         }
-        yield {"status": "drafting", "label": "Drafting legal analysis…"}
+        yield {
+            "event": "sub_step",
+            "group_id": "search_web",
+            "sub_icon": "search",
+            "sub_text": '"site:indiacode.nic.in BNS section 378"',
+            "timestamp_ms": 2,
+        }
+        yield {
+            "event": "sub_step",
+            "group_id": "search_web",
+            "sub_icon": "page",
+            "sub_text": "Reading indiacode.nic.in/show-data",
+            "sub_url": "https://indiacode.nic.in/show-data",
+            "timestamp_ms": 3,
+        }
+        yield {
+            "event": "group_end",
+            "group_id": "search_web",
+            "group_summary": "Read 1 source",
+            "timestamp_ms": 4,
+        }
         yield {"content": "Answer text"}
+        yield {"event": "done", "timestamp_ms": 5}
         yield {"artifacts": {"research": {"sources": [], "report": "Answer text"}}}
 
 
 @pytest.fixture
-def sse_client(monkeypatch):
+def sse_client(monkeypatch, tmp_path):
     reset_container()
+    db_path = tmp_path / "sse_test.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+    get_settings.cache_clear()
+    init_db(get_settings().database_url)
     registry = AgentRegistry()
     registry.register("research", _StubSSEAgent())
     container = PlatformContainer()
@@ -100,15 +127,15 @@ def test_query_streams_sse_with_accept_header(sse_client):
         body = "".join(response.iter_text())
 
     events = _parse_sse_events(body)
-    assert events[0] == {"status": "thinking", "label": "Analyzing your query…"}
-    assert events[1]["status"] == "searching"
-    assert events[2]["status"] == "crawling"
-    assert events[2]["url"] == "https://indiankanoon.org/doc/1/"
+    assert events[0]["event"] == "group_start"
+    assert events[1]["event"] == "sub_step"
+    assert events[2]["sub_url"] == "https://indiacode.nic.in/show-data"
+    assert events[3]["event"] == "group_end"
     assert {"content": "Answer text"} in events
     assert events[-1] == "[DONE]"
 
 
-def test_query_sse_status_events_precede_content(sse_client):
+def test_query_sse_progress_events_precede_content(sse_client):
     with sse_client.stream(
         "POST",
         "/query",
@@ -121,9 +148,13 @@ def test_query_sse_status_events_precede_content(sse_client):
     first_content_idx = next(
         i for i, e in enumerate(events) if isinstance(e, dict) and "content" in e
     )
-    status_idxs = [i for i, e in enumerate(events) if isinstance(e, dict) and "status" in e]
-    assert status_idxs
-    assert max(status_idxs) < first_content_idx
+    progress_idxs = [
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, dict) and e.get("event") in {"group_start", "sub_step", "group_end"}
+    ]
+    assert progress_idxs
+    assert max(progress_idxs) < first_content_idx
 
 
 def test_query_sse_always_ends_with_done(sse_client):

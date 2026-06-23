@@ -86,19 +86,19 @@ class TestHealth:
 
 class TestSearchEndpoint:
 
-    @patch("mcp.retrieval_server.integrations.web_search.WebSearchClient.search")
+    @patch("mcp.retrieval_server.integrations.legal_authority_search.LegalAuthoritySearchClient.search")
 
     def test_search_all_returns_documented_shape(
 
         self,
 
-        mock_web: AsyncMock,
+        mock_legal: AsyncMock,
 
         client: TestClient,
 
     ) -> None:
 
-        mock_web.return_value = (
+        mock_legal.return_value = (
 
             [
 
@@ -112,7 +112,7 @@ class TestSearchEndpoint:
 
                     "score": 0.7,
 
-                    "engine": "duckduckgo",
+                    "metadata": {},
 
                 }
 
@@ -188,19 +188,19 @@ class TestSearchEndpoint:
 
 
 
-    @patch("mcp.retrieval_server.integrations.web_search.WebSearchClient.search")
+    @patch("mcp.retrieval_server.integrations.legal_authority_search.LegalAuthoritySearchClient.search")
 
     def test_search_degraded_when_source_raises(
 
         self,
 
-        mock_web: AsyncMock,
+        mock_legal: AsyncMock,
 
         client: TestClient,
 
     ) -> None:
 
-        mock_web.return_value = ([], True)
+        mock_legal.return_value = ([], True)
 
 
 

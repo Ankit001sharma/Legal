@@ -4,8 +4,8 @@ from db.models import (  # noqa: F401
     Base,
     CitationEdge,
     CrawlCache,
+    CrawlerBase,
     SeedSource,
     TenantDocument,
     WebDocument,
-    get_engine,
 )

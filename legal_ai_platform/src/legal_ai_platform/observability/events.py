@@ -81,3 +81,11 @@ class ResearchCompleted(ObservabilityEvent):
     output_length: int = 0
     latency_ms: float = 0.0
     token_estimate: int = 0
+    citation_coverage_pct: float = 0.0
+    unsupported_claim_pct: float = 0.0
+    hallucination_rate_pct: float = 0.0
+    source_quality_score: float = 0.0
+    relevance_score: float = 0.0
+    coverage_completeness_pct: float = 0.0
+    consensus_score: float = 0.0
+    overall_confidence_pct: float = 0.0

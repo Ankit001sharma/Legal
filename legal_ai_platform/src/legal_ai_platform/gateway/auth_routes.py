@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,6 +15,8 @@ from legal_ai_platform.auth.passwords import hash_password, verify_password
 from legal_ai_platform.auth.principal import Principal, UserRole
 from legal_ai_platform.config import get_settings
 from legal_ai_platform.db.models import Tenant, User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -56,6 +59,7 @@ def _user_to_principal(user: User) -> Principal:
 def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     user = db.query(User).filter(User.email == body.email.lower()).one_or_none()
     if user is None or not user.active or not verify_password(body.password, user.password_hash):
+        logger.info("login failed email=%s", body.email.lower())
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     settings = get_settings()
     token = create_access_token(
@@ -63,6 +67,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
         secret=settings.jwt_secret,
         expire_minutes=settings.jwt_expire_minutes,
     )
+    logger.info("login success user_id=%s email=%s", user.id, user.email)
     return TokenResponse(access_token=token)
 
 
@@ -107,6 +112,13 @@ def register(
     db.add(user)
     db.flush()
     principal = _user_to_principal(user)
+    logger.info(
+        "user registered user_id=%s email=%s role=%s tenant_id=%s",
+        user.id,
+        user.email,
+        user.role,
+        user.tenant_id,
+    )
     return UserResponse(
         user_id=principal.user_id,
         email=principal.email,

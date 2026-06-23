@@ -1,0 +1,9 @@
+{
+  "tenant_id": "tenant-x",
+  "source_id": "internal:1e8fa3571b4b",
+  "title": "NDA Template",
+  "clean_text": "Confidentiality obligations apply for 2 years.",
+  "content_hash": "2bb91f4cc5f11a3d767d3d702f7f548a507cf30e535b7e168442768c66e21310",
+  "metadata": {},
+  "created_at": "2026-06-21T06:09:02.251426+00:00"
+}

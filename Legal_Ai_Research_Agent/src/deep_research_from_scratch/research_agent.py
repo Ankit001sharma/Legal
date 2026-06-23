@@ -31,6 +31,7 @@ from deep_research_from_scratch.prompts import (
 )
 from deep_research_from_scratch.retrieval_bridge import run_fetch, run_search, run_semantic_search
 from deep_research_from_scratch.search_tools import fetch_url, semantic_search, web_search
+from deep_research_from_scratch.status_stream import emit_crawl_status, emit_search_status
 from deep_research_from_scratch.source_registry import (
     RetrievedSource,
     count_fetches,
@@ -47,10 +48,22 @@ from deep_research_from_scratch.utils import get_today_str
 tools = [web_search, semantic_search, fetch_url, think_tool, search_memory, save_memory]
 tools_by_name = {tool.name: tool for tool in tools}
 
-model = get_chat_model("researcher")
-model_with_tools = model.bind_tools(tools)
-summarization_model = get_chat_model("summarizer")
-compress_model = get_chat_model("compress", max_tokens=32000)
+_model_with_tools = None
+_compress_model = None
+
+
+def _get_model_with_tools():
+    global _model_with_tools
+    if _model_with_tools is None:
+        _model_with_tools = get_chat_model("researcher").bind_tools(tools)
+    return _model_with_tools
+
+
+def _get_compress_model():
+    global _compress_model
+    if _compress_model is None:
+        _compress_model = get_chat_model("compress", max_tokens=32000)
+    return _compress_model
 
 _FETCH_REMINDER = (
     "MANDATORY: You have not yet fetched enough primary legal sources. "
@@ -67,15 +80,19 @@ def _execute_retrieval_tool(
     """Run retrieval tools and capture structured source updates."""
     counter_updates: dict[str, int] = {}
     if name == "web_search":
+        emit_search_status(str(args.get("query", "")))
         text, sources = run_search(args["query"], int(args.get("max_results", 5)))
         counter_updates["search_count"] = 1
         return text, sources, counter_updates
     if name == "semantic_search":
+        emit_search_status(str(args.get("query", "")))
         text, sources = run_semantic_search(args["query"], int(args.get("max_results", 5)))
         counter_updates["search_count"] = 1
         return text, sources, counter_updates
     if name == "fetch_url":
-        text, src = run_fetch(str(args["url"]))
+        url = str(args["url"])
+        emit_crawl_status(url)
+        text, src = run_fetch(url)
         sources = [src] if src else []
         if src:
             counter_updates["fetch_count"] = 1
@@ -134,9 +151,9 @@ def llm_call(state: ResearcherState):
             requested_max_tokens=8192,
         )
         model = (
-            model_with_tools.bind(max_tokens=safe_max_tokens)
+            _get_model_with_tools().bind(max_tokens=safe_max_tokens)
             if safe_max_tokens is not None
-            else model_with_tools
+            else _get_model_with_tools()
         )
         response = invoke_with_retry(model, messages)
     except Exception as e:  # noqa: BLE001
@@ -220,9 +237,9 @@ def compress_research(state: ResearcherState) -> dict:
         requested_max_tokens=32000,
     )
     model = (
-        compress_model.bind(max_tokens=safe_max_tokens)
+        _get_compress_model().bind(max_tokens=safe_max_tokens)
         if safe_max_tokens is not None
-        else compress_model
+        else _get_compress_model()
     )
     response = invoke_with_retry(model, messages)
 

@@ -55,10 +55,10 @@ def test_bootstrap_merges_search_and_fetch():
 
     with patch("deep_research_from_scratch.research_bootstrap.config") as mock_cfg:
         mock_cfg.ENABLE_RESEARCH_BOOTSTRAP = True
-        mock_cfg.BOOTSTRAP_SEARCH_QUERIES = 3
-        mock_cfg.BOOTSTRAP_MAX_FETCHES = 3
-        mock_cfg.BOOTSTRAP_RESULTS_PER_QUERY = 5
-        mock_cfg.BOOTSTRAP_MIN_TARGET_FETCHES = 3
+        mock_cfg.DEEP_BOOTSTRAP_SEARCH_QUERIES = 3
+        mock_cfg.DEEP_BOOTSTRAP_MAX_FETCHES = 3
+        mock_cfg.DEEP_BOOTSTRAP_RESULTS_PER_QUERY = 5
+        mock_cfg.DEEP_BOOTSTRAP_MIN_TARGET_FETCHES = 3
         with patch(
             "deep_research_from_scratch.research_bootstrap.run_search",
             return_value=("search results", [search_src]),

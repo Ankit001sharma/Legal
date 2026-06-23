@@ -53,7 +53,7 @@ def test_config_defaults(monkeypatch):
     assert config.FETCH_MAX_CHARS == 24000
     assert config.ALLOW_CLARIFICATION is True
     assert config.RETRIEVAL_SERVER_URL == "http://localhost:8001"
-    assert config.RETRIEVAL_TIMEOUT_SECONDS == 30.0
+    assert config.RETRIEVAL_TIMEOUT_SECONDS == 60.0
     assert config.RETRIEVAL_MAX_RETRIES == 3
     assert config.MEMORY_BACKEND == "file"
     assert config.MAX_INPUT_CHARS == 100000

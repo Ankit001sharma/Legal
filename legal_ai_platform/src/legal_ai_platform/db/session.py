@@ -33,7 +33,7 @@ def get_session_factory(database_url: str) -> sessionmaker[Session]:
 
 
 @contextmanager
-def get_db_session(database_url: str) -> Generator[Session, None, None]:
+def get_session(database_url: str) -> Generator[Session, None, None]:
     factory = get_session_factory(database_url)
     session = factory()
     try:
@@ -44,6 +44,10 @@ def get_db_session(database_url: str) -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
+
+
+# Backward-compatible alias used by gateway routes and scripts.
+get_db_session = get_session
 
 
 def init_db(database_url: str) -> None:

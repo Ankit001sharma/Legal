@@ -14,9 +14,8 @@ cp .env.example .env
 # Start the server (local dev)
 uvicorn mcp.retrieval_server.main:app --port 8001
 
-# Optional: Streamlit test UI (in a second terminal)
-# Tabs: Research Agent (platform :8080) + individual /tools/* endpoints
-streamlit run streamlit_app.py
+# Start the full stack (React frontend + Java + Python platform)
+docker compose up -d
 ```
 
 ## Docker (with self-hosted open-webSearch)

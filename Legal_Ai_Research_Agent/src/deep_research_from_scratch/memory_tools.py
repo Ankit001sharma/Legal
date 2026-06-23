@@ -16,6 +16,7 @@ plays nicely with checkpointed graphs while remaining pure-file underneath.
 """
 
 import json
+import logging
 import os
 import re
 import threading
@@ -25,6 +26,8 @@ from datetime import datetime
 from pathlib import Path
 
 from typing_extensions import List
+
+logger = logging.getLogger(__name__)
 
 # Per-path locks for file writes. Using one lock per file path prevents
 # parallel sub-agents writing the same file from interleaving, while allowing
@@ -51,7 +54,12 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
-# ===== CONSTANTS (ported from memdir.ts) =====
+from deep_research_from_scratch.memory_store import (
+    ENTRYPOINT_NAME,
+    append_index_pointer,
+    split_query_terms,
+)
+
 from deep_research_from_scratch.config import config
 from deep_research_from_scratch.memory_namespace import (
     MemoryNamespace,
@@ -60,7 +68,6 @@ from deep_research_from_scratch.memory_namespace import (
     resolve_memory_paths,
 )
 
-ENTRYPOINT_NAME = "MEMORY.md"
 MAX_ENTRYPOINT_LINES = config.MAX_ENTRYPOINT_LINES
 MAX_ENTRYPOINT_BYTES = config.MAX_ENTRYPOINT_BYTES
 
@@ -308,28 +315,6 @@ def load_memory_prompt(config: RunnableConfig | None = None) -> str:
     return build_memory_prompt(display_name="auto memory", memory_dir=get_auto_mem_path())
 
 
-def _slugify(title: str) -> str:
-    """Turn a memory title into a safe filename slug."""
-    slug = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
-    return slug or "memory"
-
-
-def _append_index_pointer(memory_dir: Path, title: str, filename: str, hook: str) -> None:
-    """Add (or replace) a pointer line in MEMORY.md for a saved memory file."""
-    entrypoint = memory_dir / ENTRYPOINT_NAME
-    pointer = f"- [{title}]({filename}) - {hook}"
-
-    with _get_file_lock(str(entrypoint)):
-        existing = entrypoint.read_text(encoding="utf-8") if entrypoint.exists() else ""
-        lines = [ln for ln in existing.split("\n") if ln.strip()]
-        # Replace an existing pointer to the same file, else append.
-        lines = [ln for ln in lines if f"({filename})" not in ln]
-        if not lines:
-            lines = ["# MEMORY", ""]
-        lines.append(pointer)
-        entrypoint.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 # ===== 3. MEMORY TOOLS =====
 # NOTE: The agent-facing long-term memory tools ``save_memory`` / ``search_memory``
 # now live in ``memory_mcp_tools`` and route through the Legal ai retrieval MCP
@@ -375,7 +360,7 @@ def update_legal_memory(file_name: str, topic: str, content: str) -> str:
     target_file = memory_dir / safe_name
     try:
         target_file.write_text(content, encoding="utf-8")
-        _append_index_pointer(memory_dir, topic, safe_name, "Persistent legal facts.")
+        append_index_pointer(memory_dir, topic, safe_name, "Persistent legal facts.")
         return f"Success: Memory written to {safe_name} and pointer ensured in {ENTRYPOINT_NAME}."
     except Exception as e:
         return f"Error updating memory: {str(e)}"
@@ -450,8 +435,10 @@ KEEP_RECENT_MESSAGES = config.KEEP_RECENT_MESSAGES
 COMPACT_PROMPT = (
     "You are compacting a long conversation to conserve the context window. "
     "Summarize the following messages into a concise but complete set of durable "
-    "notes that preserve: the user's goals, key facts and entities, decisions "
-    "made, and any open/unfinished tasks. Write in third person."
+    "notes that preserve: the user's CURRENT goals (from the most recent messages), "
+    "key facts and entities for the active topic, decisions made, and any open/"
+    "unfinished tasks. If the user switched to a new legal topic, drop details about "
+    "the old topic. Write in third person."
 )
 
 
@@ -574,6 +561,172 @@ def compact_conversation(state: dict, config: RunnableConfig = None) -> dict:
     return {"messages": update} if update else {}
 
 
+# ===== 4b. RECENCY-WEIGHTED SESSION RECALL =====
+# Semantic/keyword recall alone can surface an older turn (e.g. "murder") when the
+# user has moved on (e.g. "theft"). Weight recent turns higher and never recall
+# from the verbatim recent window (already injected via build_session_context).
+
+RECALL_EXCLUDE_RECENT = 7
+RECALL_TOP_K = 5
+RECENCY_HALF_LIFE_HOURS = 48.0
+SIMILARITY_WEIGHT = 0.7
+RECENCY_WEIGHT = 0.3
+
+
+def retrieve_recent_turns_only(entries: List[dict], k_recent: int = RECALL_EXCLUDE_RECENT) -> List[dict]:
+    """Return the last *k_recent* transcript entries (most recent last)."""
+    if not entries:
+        return []
+    return entries[-k_recent:] if len(entries) > k_recent else list(entries)
+
+
+def _parse_entry_timestamp(entry: dict) -> datetime:
+    ts = entry.get("timestamp")
+    if isinstance(ts, str):
+        try:
+            return datetime.fromisoformat(ts)
+        except ValueError:
+            pass
+    return datetime.now()
+
+
+def _entry_text(entry: dict) -> str:
+    msg = entry.get("message", {})
+    text = msg.get("content", "")
+    return text.strip() if isinstance(text, str) else ""
+
+
+def _keyword_similarity(text: str, terms: List[str]) -> float:
+    if not terms:
+        return 0.0
+    low = text.lower()
+    return sum(1 for t in terms if t in low) / len(terms)
+
+
+def _recency_score(timestamp: datetime, current: datetime, half_life_hours: float) -> float:
+    delta_hours = max(0.0, (current - timestamp).total_seconds() / 3600.0)
+    return 2.0 ** (-delta_hours / half_life_hours)
+
+
+@dataclass
+class RecencyRecallResult:
+    turn_number: int
+    timestamp: datetime
+    role: str
+    text: str
+    similarity_score: float
+    recency_score: float
+    combined_score: float
+
+
+class RecencyWeightedMemoryIndex:
+    """Index transcript turns with combined semantic (keyword) + recency scoring."""
+
+    def __init__(self, recency_half_life_hours: float = RECENCY_HALF_LIFE_HOURS):
+        self.recency_half_life_hours = recency_half_life_hours
+        self._entries: List[dict] = []
+
+    def add_entry(self, turn_number: int, entry: dict) -> None:
+        self._entries.append({"turn_number": turn_number, "entry": entry})
+
+    def retrieve_with_recency(
+        self,
+        query: str,
+        *,
+        current_timestamp: datetime | None = None,
+        k: int = RECALL_TOP_K,
+    ) -> List[RecencyRecallResult]:
+        if not self._entries:
+            return []
+
+        now = current_timestamp or datetime.now()
+        terms = split_query_terms(query)
+        results: List[RecencyRecallResult] = []
+
+        for item in self._entries:
+            entry = item["entry"]
+            text = _entry_text(entry)
+            if not text:
+                continue
+            msg = entry.get("message", {})
+            role = msg.get("role", entry.get("type", "unknown"))
+            ts = _parse_entry_timestamp(entry)
+
+            similarity = _keyword_similarity(text, terms)
+            recency = _recency_score(ts, now, self.recency_half_life_hours)
+            combined = (SIMILARITY_WEIGHT * similarity) + (RECENCY_WEIGHT * recency)
+
+            results.append(
+                RecencyRecallResult(
+                    turn_number=item["turn_number"],
+                    timestamp=ts,
+                    role=role,
+                    text=text,
+                    similarity_score=similarity,
+                    recency_score=recency,
+                    combined_score=combined,
+                )
+            )
+
+        results.sort(key=lambda r: r.combined_score, reverse=True)
+        return results[:k]
+
+
+def recall_older_session_turns(
+    session_id: str,
+    query: str,
+    *,
+    k: int = RECALL_TOP_K,
+    exclude_recent: int = RECALL_EXCLUDE_RECENT,
+) -> str:
+    """Recall older session turns (outside the recent window) with recency weighting."""
+    transcript = load_transcript(session_id)
+    if not transcript or not query.strip():
+        return "None."
+
+    searchable = transcript[:-exclude_recent] if len(transcript) > exclude_recent else []
+    if not searchable:
+        return "None."
+
+    index = RecencyWeightedMemoryIndex()
+    for i, entry in enumerate(searchable):
+        index.add_entry(i, entry)
+
+    hits = index.retrieve_with_recency(query, k=k)
+    if not hits:
+        return "None."
+
+    lines = []
+    for hit in hits:
+        lines.append(
+            f"Turn {hit.turn_number} [{hit.role}]: {hit.text}\n"
+            f"  (relevance {hit.combined_score:.2f} = "
+            f"similarity {hit.similarity_score:.2f} + recency {hit.recency_score:.2f})"
+        )
+    return "\n\n".join(lines)
+
+
+def format_transcript_entries(
+    entries: List[dict],
+    *,
+    truncate_chars: int | None = None,
+) -> str:
+    """Render transcript entries with optional truncation."""
+    lines = []
+    for entry in entries:
+        msg = entry.get("message", {})
+        role = msg.get("role", entry.get("type", "unknown"))
+        text = _entry_text(entry)
+        if not text:
+            continue
+        ts = entry.get("timestamp", "")
+        prefix = f"[{ts}] {role.upper()}" if ts else role.upper()
+        if truncate_chars is not None and len(text) > truncate_chars:
+            text = text[:truncate_chars] + "..."
+        lines.append(f"{prefix}:\n{text}")
+    return "\n\n".join(lines) if lines else "(none)"
+
+
 # ===== 5. ROLLING SESSION SUMMARY (continuous conversation, no context loss) =====
 # A long, multi-turn conversation cannot fit verbatim in the context window. To
 # keep continuity WITHOUT losing context we maintain, per session:
@@ -590,13 +743,48 @@ SESSION_SUMMARY_THRESHOLD = config.SESSION_SUMMARY_THRESHOLD
 SESSION_KEEP_RECENT = config.SESSION_KEEP_RECENT
 
 SESSION_SUMMARY_PROMPT = (
-    "You maintain a running summary of a legal research conversation so it can "
-    "continue across many turns without losing context. Update the EXISTING "
-    "summary by folding in the NEW messages. Preserve precisely: the user's "
-    "goals/questions, jurisdiction, key facts and entities, any statutes/cases/"
-    "citations mentioned, decisions made, and open/unfinished tasks. Keep it "
-    "concise and factual (third person). Do NOT invent anything."
+    "You maintain a running summary of a legal research conversation that spans many turns. "
+    "Your job is to UPDATE the EXISTING summary by folding in the NEW messages from the "
+    "user and assistant.\n\n"
+    "CRITICAL INSTRUCTION:\n"
+    "When folding in NEW messages, prioritize them heavily. If the new messages introduce:\n"
+    "- A DIFFERENT legal topic (new statute, person, offence, etc.) → START FRESH summary\n"
+    "- A CONTINUATION of prior topic → Integrate with existing summary\n"
+    "- A CLARIFICATION or FOLLOW-UP → Update the relevant section only\n\n"
+    "RECENCY RULE:\n"
+    "The most recent user message is the CURRENT research direction.\n"
+    "Do NOT let old summaries override what the user just asked.\n"
+    "Example: If user previously asked about murder, but just asked 'what about theft?', "
+    "the summary should focus on THEFT, not murder.\n\n"
+    "Preserve precisely in the summary:\n"
+    "- The user's CURRENT goals/questions (from latest message)\n"
+    "- Jurisdiction (if stated in latest message or relevant to current topic)\n"
+    "- Key facts mentioned FOR THIS TOPIC\n"
+    "- Statutes/cases/citations mentioned FOR THIS TOPIC\n"
+    "- Decisions made about THIS TOPIC\n"
+    "- Open/unfinished tasks FOR THIS TOPIC\n\n"
+    "WHAT TO REMOVE:\n"
+    "- Details about OLD topics if user moved to new topic\n"
+    "- Prior research directions that are no longer relevant\n"
+    "- Outdated decisions if user changed their mind\n\n"
+    "Keep it concise and factual (third person).\n"
+    "Do NOT invent anything.\n"
+    "Do NOT assume continuation unless user explicitly references prior topic."
 )
+
+
+def record_research_metrics(session_id: str, metrics: dict) -> None:
+    """Append aggregate quality metrics to the session audit log."""
+    entry = {
+        "uuid": str(uuid.uuid4()),
+        "timestamp": datetime.now().isoformat(),
+        "sessionId": session_id,
+        "metrics": metrics,
+    }
+    path = get_sessions_dir() / f"{session_id}.metrics.jsonl"
+    with _get_file_lock(str(path)):
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 def record_verification(session_id: str, result: dict) -> None:
@@ -663,11 +851,42 @@ def _entries_to_text(entries: List[dict]) -> str:
     return "\n".join(lines)
 
 
+def _format_session_context_display(
+    transcript: List[dict],
+    summary: str,
+    *,
+    focus_on_last_n: int = 3,
+) -> str:
+    """Format session context with the most recent messages shown first and emphasized."""
+    if not transcript:
+        return "No prior conversation on record for this session."
+
+    parts: List[str] = []
+
+    parts.append("### CURRENT TOPIC (most recent messages — HIGHEST PRIORITY)")
+    parts.append("─" * 60)
+    parts.append(format_transcript_entries(transcript[-focus_on_last_n:]))
+
+    if summary.strip():
+        parts.append("\n### Earlier conversation (rolled-up summary)")
+        parts.append("─" * 60)
+        parts.append(summary.strip())
+
+    if len(transcript) > focus_on_last_n:
+        earlier = transcript[:-focus_on_last_n]
+        parts.append("\n### Earlier in this session (context)")
+        parts.append("─" * 60)
+        parts.append(format_transcript_entries(earlier[-3:], truncate_chars=100))
+
+    return "\n".join(parts)
+
+
 def build_session_context(
     session_id: str,
     keep_recent: int = SESSION_KEEP_RECENT,
     threshold: int = SESSION_SUMMARY_THRESHOLD,
     config: RunnableConfig | None = None,
+    focus_on_last_n: int = 3,
 ) -> str:
     """Build bounded conversation context for a (possibly very long) session.
 
@@ -708,10 +927,8 @@ def build_session_context(
             summarized_count = len(transcript) - keep_recent
             save_session_summary(session_id, summary, summarized_count)
 
-    recent = transcript[-keep_recent:] if keep_recent > 0 else []
-    parts = []
-    if summary.strip():
-        parts.append(f"#### Running summary of earlier conversation\n{summary.strip()}")
-    if recent:
-        parts.append(f"#### Most recent turns (verbatim)\n{_entries_to_text(recent)}")
-    return "\n\n".join(parts) if parts else "No prior conversation on record for this session."
+    return _format_session_context_display(
+        transcript,
+        summary,
+        focus_on_last_n=focus_on_last_n,
+    )

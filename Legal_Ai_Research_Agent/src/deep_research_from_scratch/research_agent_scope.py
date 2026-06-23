@@ -9,7 +9,7 @@ The workflow uses structured output to make deterministic decisions about
 whether sufficient context exists to proceed with research.
 """
 
-from datetime import datetime
+import re
 
 from langchain_core.messages import (
     AIMessage,
@@ -24,12 +24,15 @@ from langgraph.types import Command
 from typing_extensions import Literal
 
 from deep_research_from_scratch.config import config as app_config
+from deep_research_from_scratch.memory_namespace import apply_config_namespace
 from deep_research_from_scratch.memory_backend import format_hits, get_memory_backend
 from deep_research_from_scratch.memory_tools import (
+    RECALL_EXCLUDE_RECENT,
     build_session_context,
     compact_conversation,
     get_session_id,
     load_memory_prompt,
+    recall_older_session_turns,
     record_transcript,
 )
 from deep_research_from_scratch.model_config import get_chat_model, invoke_with_retry
@@ -41,25 +44,95 @@ from deep_research_from_scratch.prompts import (
 from deep_research_from_scratch.state_scope import (
     AgentInputState,
     AgentState,
-    SuggestDirections,
     ResearchQuestion,
+    SuggestDirections,
 )
+from deep_research_from_scratch.status_stream import (
+    emit_think_step,
+    group_end,
+    group_start,
+)
+from deep_research_from_scratch.utils import get_today_str
 
 # Marker prefix identifying the memory block this node injects, so stale blocks
 # can be removed (deduped) on subsequent turns instead of accumulating.
 MEMORY_BLOCK_PREFIX = "## Persistent memory (for your awareness)"
 
-# ===== UTILITY FUNCTIONS =====
-
-def get_today_str() -> str:
-    """Get current date in a human-readable format."""
-    now = datetime.now()
-    return f"{now.strftime('%a %b')} {now.day}, {now.year}"
-
 # ===== CONFIGURATION =====
 
-# Initialize model (routed through central config for on-prem support)
-model = get_chat_model("reasoning", temperature=0.0)
+# Lazily initialized — deferred until first use so the module can be imported
+# without OPENAI_API_KEY present at container startup.
+_model = None
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        _model = get_chat_model("reasoning", temperature=0.0)
+    return _model
+
+
+_GREETING_PATTERN = re.compile(
+    r"^\s*(?:"
+    r"hi(?:\s+there)?|"
+    r"hello(?:\s+there)?|"
+    r"hey(?:\s+there)?|"
+    r"howdy|"
+    r"good\s+(?:morning|afternoon|evening|night|day)|"
+    r"what(?:'s|\s+is)\s+up|"
+    r"how\s+are\s+you(?:\s+doing)?|"
+    r"how\s+do\s+you\s+do|"
+    r"thanks?(?:\s+you)?|"
+    r"thank\s+you|"
+    r"bye|"
+    r"goodbye|"
+    r"see\s+ya|"
+    r"g(?:ood)?\s*night"
+    r")"
+    r"(?:\s+[!?.…]+)?\s*$",
+    re.IGNORECASE,
+)
+
+_META_PATTERN = re.compile(
+    r"^\s*(?:"
+    r"who\s+are\s+you|"
+    r"what\s+are\s+you|"
+    r"what\s+can\s+you\s+do|"
+    r"what\s+do\s+you\s+do"
+    r")(?:\s+[!?.…]+)?\s*$",
+    re.IGNORECASE,
+)
+
+_DEFAULT_GREETING_REPLY = (
+    "Hello! I'm your Indian legal research assistant. "
+    "I can help you research statutes, case law, legal procedures, and draft memos. "
+    "What legal question would you like me to research?"
+)
+
+
+def _latest_user_text(state: AgentState) -> str:
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage) and isinstance(msg.content, str):
+            return msg.content.strip()
+    return ""
+
+
+def _is_greeting_or_meta(text: str) -> bool:
+    if not text:
+        return False
+    return bool(_GREETING_PATTERN.match(text) or _META_PATTERN.match(text))
+
+
+def _direct_response_command(text: str, session_id: str, config: RunnableConfig) -> Command:
+    record_transcript(session_id, "assistant", text, config=config)
+    return Command(
+        goto=END,
+        update={
+            "messages": [AIMessage(content=text)],
+            "final_report": text,
+            "research_directions": [],
+        },
+    )
 
 # ===== WORKFLOW NODES =====
 
@@ -107,26 +180,30 @@ def load_memory(state: AgentState, config: RunnableConfig) -> dict:
     backend = get_memory_backend()
 
     # 1. Long-term memory: index + cross-session facts relevant to this request
-    #    (keyword today, semantic when a vector backend is configured).
     memory_index = load_memory_prompt(config)
     longterm_hits = backend.search_longterm(latest_user_text, k=5) if latest_user_text else []
-    recalled = format_hits(longterm_hits, empty="No long-term memories matched this request.")
+    recalled_longterm = format_hits(longterm_hits, empty="No long-term memories matched this request.")
 
-    # 2. Bounded conversation context: rolling summary of older turns + recent
-    #    turns verbatim. Stays small regardless of how long the session gets.
+    # 2. Bounded conversation context: recent turns first + rolled-up summary
     session_ctx = build_session_context(session_id, config=config)
 
-    # 3. Other relevant earlier turns retrieved by the query (catches context
-    #    that fell outside the recent window). Vector-ready via the backend seam.
-    session_hits = backend.search_session(session_id, latest_user_text, k=3) if latest_user_text else []
-    relevant_older = format_hits(session_hits, empty="None.")
+    # 3. Older session turns outside the recent window (recency-weighted recall)
+    if latest_user_text:
+        relevant_older = recall_older_session_turns(
+            session_id,
+            latest_user_text,
+            exclude_recent=RECALL_EXCLUDE_RECENT,
+        )
+    else:
+        relevant_older = "None."
 
     memory_block = (
         f"{MEMORY_BLOCK_PREFIX}\n"
         f"{memory_index}\n\n"
-        f"### Recalled long-term facts relevant to this request\n{recalled}\n\n"
-        f"### Conversation so far (this session)\n{session_ctx}\n\n"
-        f"### Other relevant earlier turns\n{relevant_older}"
+        f"### CURRENT CONVERSATION (last {RECALL_EXCLUDE_RECENT} messages — HIGHEST PRIORITY)\n"
+        f"{session_ctx}\n\n"
+        f"### Recalled long-term facts relevant to this request\n{recalled_longterm}\n\n"
+        f"### Similar earlier messages (ranked by relevance + recency)\n{relevant_older}"
     )
 
     # Now persist the newest message to the transcript (after building context).
@@ -153,11 +230,18 @@ def load_memory(state: AgentState, config: RunnableConfig) -> dict:
 def clarify_with_user(state: AgentState, config: RunnableConfig) -> Command[Literal["write_research_brief", "__end__"]]:
     """Suggest research directions or ask a targeted clarifying question before starting research.
 
-    Three possible actions:
+    Four possible actions:
+    - direct_response: greeting/meta/off-topic — reply and stop (no research).
     - suggest_directions: present 3-4 research angles for user to choose; graph pauses.
     - ask_clarification: ask ONE missing-fact question; graph pauses.
     - proceed: start research immediately.
     """
+    session_id = get_session_id(config)
+    latest_user_text = _latest_user_text(state)
+
+    if _is_greeting_or_meta(latest_user_text):
+        return _direct_response_command(_DEFAULT_GREETING_REPLY, session_id, config)
+
     if not app_config.ALLOW_CLARIFICATION:
         return Command(
             goto="write_research_brief",
@@ -167,15 +251,21 @@ def clarify_with_user(state: AgentState, config: RunnableConfig) -> Command[Lite
             },
         )
 
-    structured_output_model = model.with_structured_output(SuggestDirections)
+    research_mode = (config.get("configurable") or {}).get("research_mode", "normal")
+    if research_mode == "deep":
+        return Command(
+            goto="write_research_brief",
+            update={
+                "messages": [
+                    AIMessage(
+                        content="Starting deep legal research based on your query."
+                    )
+                ],
+                "research_directions": [],
+            },
+        )
 
-    # Extract the latest human message so the prompt can identify the current query
-    # even when a long prior conversation is present.
-    latest_user_text = ""
-    for msg in reversed(state.get("messages", [])):
-        if isinstance(msg, HumanMessage) and isinstance(msg.content, str):
-            latest_user_text = msg.content
-            break
+    structured_output_model = _get_model().with_structured_output(SuggestDirections)
 
     response = structured_output_model.invoke([
         HumanMessage(content=suggest_directions_prompt.format(
@@ -185,7 +275,9 @@ def clarify_with_user(state: AgentState, config: RunnableConfig) -> Command[Lite
         ))
     ])
 
-    session_id = get_session_id(config)
+    if response.action == "direct_response":
+        text = (response.direct_response or _DEFAULT_GREETING_REPLY).strip()
+        return _direct_response_command(text, session_id, config)
 
     if response.action == "suggest_directions":
         directions_list = "\n".join(
@@ -228,7 +320,7 @@ def write_research_brief(state: AgentState, config: RunnableConfig):
     and contains all necessary details for effective research.
     """
     # Set up structured output model
-    structured_output_model = model.with_structured_output(ResearchQuestion)
+    structured_output_model = _get_model().with_structured_output(ResearchQuestion)
 
     # Extract the latest human message so the prompt can focus on the CURRENT
     # query rather than defaulting to a prior session's research topic.
@@ -239,6 +331,9 @@ def write_research_brief(state: AgentState, config: RunnableConfig):
             break
 
     # Generate research brief from conversation history
+    group_start("scope", "Understanding your query", "think")
+    emit_think_step("scope", "Reviewing conversation context")
+
     response = invoke_with_retry(
         structured_output_model,
         [
@@ -251,6 +346,8 @@ def write_research_brief(state: AgentState, config: RunnableConfig):
             )
         ],
     )
+
+    group_end("scope", "Research brief ready")
 
     # Update state with generated research brief and pass it to the supervisor
     return {

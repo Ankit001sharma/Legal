@@ -57,7 +57,8 @@ def test_deep_finalize_sequence_linkifies_inline_tokens():
     report = "## Discussion\nThe court held X [Indian Kanoon:1]."
     sources = [_sample_source()]
     out = linkify_citations(ensure_sources_section(report, sources), sources)
-    assert "[Indian Kanoon:1](https://indiankanoon.org/doc/999/)" in out
+    assert '<a href="https://indiankanoon.org/doc/999/"' in out
+    assert '[Indian Kanoon:1]</a>' in out
     assert "### Sources" in out
 
 
@@ -65,5 +66,6 @@ def test_normal_post_processing_linkifies_body_and_footer():
     report = "## Brief Answer\nSection 103 applies [Indian Kanoon:1]."
     sources = [_sample_source()]
     out = linkify_citations(_append_sources_section(report, sources), sources)
-    assert "[Indian Kanoon:1](https://indiankanoon.org/doc/999/)" in out
+    assert '<a href="https://indiankanoon.org/doc/999/"' in out
+    assert '[Indian Kanoon:1]</a>' in out
     assert "## Table of Authorities" in out

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import time
 import uuid
@@ -28,28 +29,50 @@ from legal_ai_platform.observability.events import (
 )
 from legal_ai_platform.observability.hooks import HookRegistry
 
+logger = logging.getLogger(__name__)
+
 
 # LangGraph nodes that produce LLM tokens we want to forward to the client in real-time.
-_STREAM_NODES: frozenset[str] = frozenset({"generate_normal_answer", "finalize_report"})
+_STREAM_NODES: frozenset[str] = frozenset(
+    {"generate_normal_answer", "finalize_report", "final_report_generation"}
+)
 
-# Nodes whose start should trigger a summarization status event.
-_SUMMARIZE_NODES: frozenset[str] = frozenset({"compress_research"})
+# Progress events emitted by the research graph (see status_stream.py).
+_PROGRESS_EVENTS: frozenset[str] = frozenset(
+    {"group_start", "sub_step", "group_end", "done"}
+)
 
-# Tool names that perform retrieval searches.
-_SEARCH_TOOLS: frozenset[str] = frozenset({"web_search", "semantic_search"})
 
-# Human-readable labels for each LangGraph node, shown in the streaming UI.
-_NODE_PROGRESS: dict[str, tuple[str, str]] = {
-    "load_memory": ("🧠", "Loading conversation memory"),
-    "compact_conversation": ("📋", "Preparing context"),
-    "write_research_brief": ("📝", "Understanding your query"),
-    "normal_researcher": ("🔍", "Searching legal databases"),
-    "generate_normal_answer": ("⚖️", "Drafting legal answer"),
-    "clarify_with_user": ("💭", "Analysing research scope"),
-    "lead_researcher": ("🔬", "Coordinating deep research"),
-    "finalize_report": ("📜", "Drafting legal memorandum"),
-    "compress_research": ("🗜️", "Compiling research findings"),
-}
+def _extract_progress_payload(event: dict[str, Any]) -> dict[str, Any] | None:
+    """Pull a progress dict from LangGraph v2 stream events.
+
+    ``get_stream_writer()`` payloads only surface when ``astream_events`` is
+    called with ``stream_mode`` that includes ``"custom"``. They arrive as
+    ``on_chain_stream`` chunks shaped like ``("custom", {...})`` or, on older
+    paths, as ``on_custom_event``.
+    """
+    evt = event.get("event", "")
+
+    if evt == "on_custom_event":
+        data = event.get("data") or {}
+        if isinstance(data, dict) and data.get("event") in _PROGRESS_EVENTS:
+            return data
+        return None
+
+    if evt != "on_chain_stream":
+        return None
+
+    chunk = (event.get("data") or {}).get("chunk")
+    if chunk is None:
+        return None
+
+    payload: Any = chunk
+    if isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == "custom":
+        payload = chunk[1]
+
+    if isinstance(payload, dict) and payload.get("event") in _PROGRESS_EVENTS:
+        return payload
+    return None
 
 
 def _extract_confidence(report: str) -> str:
@@ -70,38 +93,6 @@ def _extract_confidence(report: str) -> str:
     return "ESTABLISHED"
 
 
-def _search_status(query: str) -> dict[str, str]:
-    """Build a searching status payload from a tool query string."""
-    lowered = (query or "").lower()
-    if "indiankanoon" in lowered:
-        label = "Querying Indian Kanoon"
-    elif "indiacode" in lowered:
-        label = "Querying India Code"
-    else:
-        label = "Querying case law database"
-    return {"status": "searching", "label": label, "query": query}
-
-
-def _crawl_status(url: str) -> dict[str, str]:
-    """Build a crawling status payload for a fetch_url call."""
-    lowered = (url or "").lower()
-    if "indiankanoon" in lowered:
-        label = "Reading judgment"
-    elif "sci.gov.in" in lowered or "supremecourt" in lowered:
-        label = "Reading court order"
-    else:
-        label = "Reading source"
-    return {"status": "crawling", "label": label, "url": url}
-
-
-def _summarize_status(source_count: int) -> dict[str, str]:
-    if source_count > 0:
-        label = f"Processing {source_count} retrieved source{'s' if source_count != 1 else ''}"
-    else:
-        label = "Processing retrieved sources"
-    return {"status": "summarizing", "label": label}
-
-
 def _effective_session_id(session_id: str | None) -> str:
     return session_id or f"guest-{uuid.uuid4()}"
 
@@ -110,6 +101,7 @@ def _build_run_config(request: AgentRequest, session_id: str) -> dict[str, Any]:
     configurable: dict[str, Any] = {
         "thread_id": session_id,
         "tenant_id": request.tenant_id,
+        "research_mode": request.mode.value,
     }
     if request.user_id:
         configurable["user_id"] = request.user_id
@@ -118,7 +110,9 @@ def _build_run_config(request: AgentRequest, session_id: str) -> dict[str, Any]:
     auth_token = request.context.get("auth_token")
     if auth_token:
         configurable["auth_token"] = auth_token
-    return {"configurable": configurable}
+    # LangGraph default recursion_limit is 25, which is too low for the deep
+    # research supervisor loop (up to 15 iterations × 3 nodes = 45+ steps).
+    return {"configurable": configurable, "recursion_limit": 150}
 
 
 def _chunk_text(chunk_content: Any) -> str:
@@ -188,6 +182,14 @@ class ResearchAgent(BaseAgent):
         strategy = self._strategies[mode]
         graph = strategy.graph
 
+        logger.info(
+            "research execute start mode=%s session_id=%s query_len=%d tenant_id=%s",
+            mode.value,
+            session_id,
+            len(request.query),
+            request.tenant_id,
+        )
+
         started = time.perf_counter()
         try:
             coro = graph.ainvoke(
@@ -202,6 +204,7 @@ class ResearchAgent(BaseAgent):
             research_response = self._build_research_response(result)
             research_directions = result.get("research_directions") or []
             latency_ms = (time.perf_counter() - started) * 1000
+            metric_fields = self._metrics_from_response(research_response)
 
             self.hooks.emit(
                 Latency(operation="research_agent.execute", latency_ms=latency_ms)
@@ -212,7 +215,17 @@ class ResearchAgent(BaseAgent):
                     citations_found=len(research_response.sources),
                     output_length=len(research_response.report),
                     latency_ms=latency_ms,
+                    **metric_fields,
                 )
+            )
+            logger.info(
+                "research execute complete mode=%s session_id=%s sources=%d output_len=%d latency_ms=%.0f awaiting_input=%s",
+                mode.value,
+                session_id,
+                len(research_response.sources),
+                len(research_response.report),
+                latency_ms,
+                research_response.awaiting_input,
             )
 
             return AgentResponse(
@@ -230,6 +243,13 @@ class ResearchAgent(BaseAgent):
             )
         except asyncio.TimeoutError:
             latency_ms = (time.perf_counter() - started) * 1000
+            logger.warning(
+                "research execute timeout mode=%s session_id=%s timeout_s=%s latency_ms=%.0f",
+                mode.value,
+                session_id,
+                self._timeout_seconds,
+                latency_ms,
+            )
             self.hooks.emit(
                 Failure(
                     operation="research_agent.execute",
@@ -247,6 +267,12 @@ class ResearchAgent(BaseAgent):
             )
         except Exception as exc:  # noqa: BLE001
             latency_ms = (time.perf_counter() - started) * 1000
+            logger.exception(
+                "research execute failed mode=%s session_id=%s latency_ms=%.0f",
+                mode.value,
+                session_id,
+                latency_ms,
+            )
             self.hooks.emit(
                 Latency(operation="research_agent.execute", latency_ms=latency_ms)
             )
@@ -259,136 +285,14 @@ class ResearchAgent(BaseAgent):
                 session_id=session_id,
             )
 
-    async def execute_stream(
-        self, request: AgentRequest
-    ) -> AsyncGenerator[dict[str, Any], None]:
-        """Stream research pipeline: node-level progress events + final answer tokens.
-
-        Yields dicts with ``type`` field:
-          ``progress``     — a node started  {icon, node, message}
-          ``stream_start`` — final answer is about to stream
-          ``token``        — one chunk of the final answer  {text}
-          ``done``         — graph finished  {success, session_id, output, …}
-          ``error``        — unrecoverable failure  {message}
-        """
-        session_id = _effective_session_id(request.session_id)
-        mode = request.mode
-        run_config = _build_run_config(request, session_id)
-        strategy = self._strategies[mode]
-        graph = strategy.graph
-        started = time.perf_counter()
-        reported_nodes: set[str] = set()
-        streaming_started = False  # True once first LLM token is forwarded
-
-        try:
-            async for event in graph.astream_events(
-                {"messages": [HumanMessage(content=request.query)]},
-                config=run_config,
-                version="v2",
-            ):
-                evt = event.get("event", "")
-                metadata = event.get("metadata", {})
-                # LangGraph v2 exposes the node name in metadata.langgraph_node
-                node = metadata.get("langgraph_node") or event.get("name", "")
-
-                # Progress events — one per node, shown while the graph is running.
-                if (
-                    evt == "on_chain_start"
-                    and node in _NODE_PROGRESS
-                    and node not in reported_nodes
-                ):
-                    reported_nodes.add(node)
-                    icon, message = _NODE_PROGRESS[node]
-                    yield {
-                        "type": "progress",
-                        "node": node,
-                        "icon": icon,
-                        "message": message,
-                    }
-
-                # Real LLM token streaming from answer-generation nodes.
-                # The raw tokens are forwarded immediately; the post-processed
-                # (linkified, verified) version is sent via stream_replace once
-                # the graph finishes and the final state is available.
-                elif evt == "on_chat_model_stream" and node in _STREAM_NODES:
-                    chunk = (event.get("data") or {}).get("chunk")
-                    if chunk:
-                        text = _chunk_text(getattr(chunk, "content", ""))
-                        if text:
-                            if not streaming_started:
-                                streaming_started = True
-                                yield {"type": "stream_start"}
-                            yield {"type": "token", "text": text}
-
-            # Graph has finished; fetch the final post-processed state.
-            snapshot = await graph.aget_state(run_config)
-            final_state: dict[str, Any] = (
-                dict(snapshot.values) if snapshot and snapshot.values else {}
-            )
-
-            research_response = self._build_research_response(final_state)
-            final_report = research_response.report
-
-            if final_report and not research_response.awaiting_input:
-                if streaming_started:
-                    # Replace the raw streamed tokens with the post-processed version
-                    # (citations linkified, deterministic checks appended, etc.).
-                    yield {"type": "stream_replace", "text": final_report}
-                else:
-                    # No streaming happened (model doesn't support it or was skipped);
-                    # fall back to chunked emission.
-                    yield {"type": "stream_start"}
-                    chunk_size = 30
-                    for i in range(0, len(final_report), chunk_size):
-                        yield {"type": "token", "text": final_report[i : i + chunk_size]}
-
-            latency_ms = (time.perf_counter() - started) * 1000
-            self.hooks.emit(
-                Latency(operation="research_agent.execute_stream", latency_ms=latency_ms)
-            )
-            self.hooks.emit(
-                ResearchCompleted(
-                    mode=mode.value,
-                    citations_found=len(research_response.sources),
-                    output_length=len(final_report or ""),
-                    latency_ms=latency_ms,
-                )
-            )
-
-            yield {
-                "type": "done",
-                "success": True,
-                "session_id": session_id,
-                "awaiting_input": research_response.awaiting_input,
-                "research_directions": final_state.get("research_directions") or [],
-                "output": final_report,
-                "confidence_level": _extract_confidence(final_report or ""),
-                "artifacts": {
-                    "research": research_response.model_dump(),
-                    "mode": mode.value,
-                },
-            }
-
-        except Exception as exc:  # noqa: BLE001
-            latency_ms = (time.perf_counter() - started) * 1000
-            self.hooks.emit(
-                Failure(
-                    operation="research_agent.execute_stream",
-                    error=str(exc),
-                    recoverable=False,
-                )
-            )
-            yield {"type": "error", "message": str(exc), "session_id": session_id}
-
     async def execute_sse_stream(
         self, request: AgentRequest
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream research for POST /query SSE contract.
 
-        Yields dict payloads mapped to ``data: <json>`` lines:
-          ``status``   — live activity feed (thinking/searching/crawling/…)
-          ``content``  — answer text chunks
-          ``artifacts``— research sidebar payload (emitted once at end)
+        Yields Claude-style step progress events:
+          ``group_start`` / ``sub_step`` / ``group_end`` / ``done``
+        plus ``content`` answer chunks and final ``artifacts``.
         """
         session_id = _effective_session_id(request.session_id)
         mode = request.mode
@@ -396,56 +300,35 @@ class ResearchAgent(BaseAgent):
         strategy = self._strategies[mode]
         graph = strategy.graph
         started = time.perf_counter()
-        fetch_count = 0
-        summarizing_emitted = False
-        drafting_emitted = False
         streaming_started = False
+        progress_done_emitted = False
 
-        yield {"status": "thinking", "label": "Analyzing your query…"}
+        logger.info(
+            "research sse stream start mode=%s session_id=%s query_len=%d",
+            mode.value,
+            session_id,
+            len(request.query),
+        )
 
         try:
             async for event in graph.astream_events(
                 {"messages": [HumanMessage(content=request.query)]},
                 config=run_config,
                 version="v2",
+                stream_mode=["updates", "custom"],
             ):
+                progress = _extract_progress_payload(event)
+                if progress is not None:
+                    if progress.get("event") == "done":
+                        progress_done_emitted = True
+                    yield progress
+                    continue
+
                 evt = event.get("event", "")
                 metadata = event.get("metadata", {})
                 node = metadata.get("langgraph_node") or event.get("name", "")
-                tool_name = event.get("name", "")
 
-                if evt == "on_custom_event":
-                    data = event.get("data") or {}
-                    if isinstance(data, dict) and data.get("status"):
-                        if data.get("status") == "crawling":
-                            fetch_count += 1
-                        yield data
-
-                elif evt == "on_tool_start":
-                    tool_input = (event.get("data") or {}).get("input") or {}
-                    if tool_name in _SEARCH_TOOLS:
-                        query = str(tool_input.get("query") or "")
-                        yield _search_status(query)
-                    elif tool_name == "fetch_url":
-                        url = str(tool_input.get("url") or "")
-                        if url:
-                            fetch_count += 1
-                            yield _crawl_status(url)
-
-                elif evt == "on_chain_start" and node in _SUMMARIZE_NODES:
-                    if not summarizing_emitted:
-                        summarizing_emitted = True
-                        yield _summarize_status(fetch_count)
-
-                elif evt == "on_chain_start" and node in _STREAM_NODES:
-                    if not summarizing_emitted and fetch_count:
-                        summarizing_emitted = True
-                        yield _summarize_status(fetch_count)
-                    if not drafting_emitted:
-                        drafting_emitted = True
-                        yield {"status": "drafting", "label": "Drafting legal analysis…"}
-
-                elif evt == "on_chat_model_stream" and node in _STREAM_NODES:
+                if evt == "on_chat_model_stream" and node in _STREAM_NODES:
                     chunk = (event.get("data") or {}).get("chunk")
                     if chunk:
                         text = _chunk_text(getattr(chunk, "content", ""))
@@ -468,6 +351,7 @@ class ResearchAgent(BaseAgent):
                         yield {"content": chunk}
 
             latency_ms = (time.perf_counter() - started) * 1000
+            metric_fields = self._metrics_from_response(research_response)
             self.hooks.emit(
                 Latency(operation="research_agent.execute_sse_stream", latency_ms=latency_ms)
             )
@@ -477,8 +361,12 @@ class ResearchAgent(BaseAgent):
                     citations_found=len(research_response.sources),
                     output_length=len(final_report or ""),
                     latency_ms=latency_ms,
+                    **metric_fields,
                 )
             )
+
+            if not progress_done_emitted:
+                yield {"event": "done", "timestamp_ms": int(time.time() * 1000)}
 
             yield {
                 "artifacts": {
@@ -499,6 +387,11 @@ class ResearchAgent(BaseAgent):
                 "content": f"Research timed out after {self._timeout_seconds}s",
             }
         except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "research sse stream failed mode=%s session_id=%s",
+                mode.value,
+                session_id,
+            )
             self.hooks.emit(
                 Failure(
                     operation="research_agent.execute_sse_stream",
@@ -519,6 +412,23 @@ class ResearchAgent(BaseAgent):
                 else dict(verification)
             )
 
+        metrics_obj = state.get("research_metrics")
+        metrics_dict = None
+        if metrics_obj is not None:
+            metrics_dict = (
+                metrics_obj.model_dump()
+                if hasattr(metrics_obj, "model_dump")
+                else dict(metrics_obj)
+            )
+        elif verification_dict and verification_dict.get("metrics"):
+            metrics_dict = verification_dict["metrics"]
+
+        claims_raw = state.get("validated_claims") or []
+        claims = [
+            c.model_dump() if hasattr(c, "model_dump") else dict(c)
+            for c in claims_raw
+        ]
+
         final_report = state.get("final_report")
         awaiting_input = not bool(final_report)
         report = final_report or self._last_ai_text(state)
@@ -531,8 +441,29 @@ class ResearchAgent(BaseAgent):
             sources=sources,
             raw_notes=state.get("raw_notes", []),
             verification=verification_dict,
+            metrics=metrics_dict,
+            claims=claims,
             awaiting_input=awaiting_input,
         )
+
+    @staticmethod
+    def _metrics_from_response(response: ResearchResponse) -> dict[str, float]:
+        """Extract observability metric fields from a research response."""
+        metrics = response.metrics or {}
+        if not metrics and response.verification:
+            metrics = response.verification.get("metrics") or {}
+        return {
+            "citation_coverage_pct": float(metrics.get("citation_coverage_pct", 0.0)),
+            "unsupported_claim_pct": float(metrics.get("unsupported_claim_pct", 0.0)),
+            "hallucination_rate_pct": float(metrics.get("hallucination_rate_pct", 0.0)),
+            "source_quality_score": float(metrics.get("source_quality_score", 0.0)),
+            "relevance_score": float(metrics.get("relevance_score", 0.0)),
+            "coverage_completeness_pct": float(
+                metrics.get("coverage_completeness_pct", 0.0)
+            ),
+            "consensus_score": float(metrics.get("consensus_score", 0.0)),
+            "overall_confidence_pct": float(metrics.get("overall_confidence_pct", 0.0)),
+        }
 
     @staticmethod
     def _map_retrieved_sources(raw_sources: list[Any]) -> list[RetrievalResult]:

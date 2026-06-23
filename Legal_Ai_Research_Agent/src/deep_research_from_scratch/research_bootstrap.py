@@ -11,7 +11,7 @@ import re
 
 from deep_research_from_scratch.config import config
 from deep_research_from_scratch.retrieval_bridge import run_fetch, run_search
-from deep_research_from_scratch.status_stream import emit_crawl_status, emit_search_status
+from deep_research_from_scratch.status_stream import emit_crawl_status, emit_search_status, end_search_group
 from deep_research_from_scratch.source_registry import (
     RetrievedSource,
     count_fetches,
@@ -295,6 +295,7 @@ def bootstrap_legal_research(
         fetch_blocks.extend(extra_fetch_blocks)
 
     if not search_blocks and not fetch_blocks:
+        end_search_group()
         return "", "", []
 
     raw_note = "\n\n".join(
@@ -320,4 +321,5 @@ def bootstrap_legal_research(
             "No sources returned during bootstrap — agent must search and fetch."
         )
 
+    end_search_group()
     return "\n".join(compressed_lines), raw_note, merged_sources

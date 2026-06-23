@@ -26,6 +26,17 @@ BACKUP_COUNT = 5
 _configured = False
 
 
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler that tolerates Windows file-lock errors on rollover."""
+
+    def doRollover(self) -> None:
+        try:
+            super().doRollover()
+        except PermissionError:
+            # Another process (or a tail/IDE) may still hold the log file open.
+            pass
+
+
 def truncate(text: str | None, max_len: int = 200) -> str:
     """Truncate text for safe logging (queries, snippets)."""
     if not text:
@@ -107,11 +118,12 @@ def _configure_structlog(level: int) -> None:
     stdout_handler.setLevel(level)
     root.addHandler(stdout_handler)
 
-    file_handler = RotatingFileHandler(
+    file_handler = SafeRotatingFileHandler(
         LOG_FILE,
         maxBytes=MAX_BYTES,
         backupCount=BACKUP_COUNT,
         encoding="utf-8",
+        delay=True,
     )
     file_handler.setFormatter(human_formatter)
     file_handler.setLevel(level)
@@ -133,11 +145,12 @@ def _configure_stdlib(level: int) -> None:
     stdout_handler.setFormatter(fmt)
     root.addHandler(stdout_handler)
 
-    file_handler = RotatingFileHandler(
+    file_handler = SafeRotatingFileHandler(
         LOG_FILE,
         maxBytes=MAX_BYTES,
         backupCount=BACKUP_COUNT,
         encoding="utf-8",
+        delay=True,
     )
     file_handler.setFormatter(fmt)
     root.addHandler(file_handler)

@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from mcp.retrieval_server.auth import authorize_tool_request
+from mcp.retrieval_server.citation_service import CitationService
 from mcp.retrieval_server.config import SERVICE_NAME, VERSION, get_settings
 from mcp.retrieval_server.fetch_service import FetchService
 from mcp.retrieval_server.ingest_service import IngestService

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import Any, Literal
 from urllib.parse import urlparse
 
@@ -80,6 +81,11 @@ class RetrievedSource(BaseModel):
     excerpt: str = ""
     source_type: str = "web"
     access_denied: bool = False
+    retrieved_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    source_index: int = 0
+    validation: Any = None
 
 
 def is_paywall_url(url: str) -> bool:
@@ -101,18 +107,59 @@ def is_blocked_fetch_content(text: str) -> bool:
     return any(marker in lower for marker in _BLOCKED_FETCH_MARKERS)
 
 
-def filter_citable_sources(sources: list[RetrievedSource] | None) -> list[RetrievedSource]:
-    """Sources the memo writer may cite — excludes unfetched paywall URLs."""
+def filter_citable_sources(
+    sources: list[RetrievedSource] | None,
+    *,
+    min_trust_score: int | None = None,
+    min_relevance_score: int | None = None,
+    require_usable: bool = True,
+) -> list[RetrievedSource]:
+    """Sources the memo writer may cite — excludes unfetched paywall URLs and low-trust sources."""
+    from deep_research_from_scratch.config import config as app_config
+
+    min_trust = min_trust_score if min_trust_score is not None else app_config.MIN_TRUST_SCORE
+    min_relevance = (
+        min_relevance_score
+        if min_relevance_score is not None
+        else app_config.MIN_RELEVANCE_SCORE
+    )
+
     citable: list[RetrievedSource] = []
     for item in sources or []:
         src = item if isinstance(item, RetrievedSource) else RetrievedSource(**item)
         if src.access_denied:
             continue
+        if src.validation is not None:
+            val = src.validation
+            if hasattr(val, "usable"):
+                usable_flag = val.usable
+                trust = val.trust_score
+                relevance = val.relevance_score
+            else:
+                usable_flag = val.get("usable", True)
+                trust = val.get("trust_score", 100)
+                relevance = val.get("relevance_score", 100)
+            if require_usable and not usable_flag:
+                continue
+            if trust < min_trust:
+                continue
+            if relevance < min_relevance:
+                continue
         if src.fetched:
             citable.append(src)
         elif not is_paywall_url(src.url):
             citable.append(src)
     return citable
+
+
+def assign_source_indices(sources: list[RetrievedSource]) -> list[RetrievedSource]:
+    """Assign stable 1-based citation indices to sources."""
+    updated: list[RetrievedSource] = []
+    for idx, src in enumerate(sources, 1):
+        data = src.model_dump()
+        data["source_index"] = idx
+        updated.append(RetrievedSource(**data))
+    return updated
 
 
 def normalize_url(url: str) -> str:

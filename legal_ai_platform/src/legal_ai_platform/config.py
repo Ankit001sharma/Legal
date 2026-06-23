@@ -19,13 +19,13 @@ class PlatformSettings(BaseSettings):
     )
 
     retrieval_server_url: str = "http://localhost:8001"
-    retrieval_timeout_seconds: float = 30.0
+    retrieval_timeout_seconds: float = 60.0
     retrieval_max_retries: int = 3
     legal_search_backend: str = "custom"
     # Upper bound on a single agent run (the full pipeline can be long). 0 = no limit.
     agent_timeout_seconds: float = 300.0
     platform_host: str = "0.0.0.0"
-    platform_port: int = 8080
+    platform_port: int = 8000
     platform_log_level: str = "INFO"
     # When true, serve over HTTPS with HTTP/2 via Hypercorn (requires TLS cert + key).
     platform_http2: bool = False

@@ -3,13 +3,30 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-load_dotenv()
+
+def _load_env_files() -> None:
+    """Load shared platform config, then Legal ai-local overrides.
+
+    ``legal_ai_platform/.env`` is the canonical source for ``DEEP_RESEARCH_MEMORY_DIR``
+    and retrieval knobs. ``Legal ai/.env`` may override auth and local-only settings.
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    for env_path in (
+        repo_root / "legal_ai_platform" / ".env",
+        repo_root / "Legal ai" / ".env",
+    ):
+        if env_path.is_file():
+            load_dotenv(env_path, override=False)
+
+
+_load_env_files()
 
 SERVICE_NAME = "retrieval-mcp"
 VERSION = "0.1.0"

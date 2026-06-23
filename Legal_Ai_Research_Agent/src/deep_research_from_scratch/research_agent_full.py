@@ -28,6 +28,7 @@ from deep_research_from_scratch.prompts import final_report_generation_prompt
 from deep_research_from_scratch.report_verification import (
     finalize_report,
     route_after_verify,
+    sanitize_report,
     verify_report,
 )
 from deep_research_from_scratch.research_agent_scope import (
@@ -37,6 +38,7 @@ from deep_research_from_scratch.research_agent_scope import (
     write_research_brief,
 )
 from deep_research_from_scratch.research_bootstrap import bootstrap_legal_research
+from deep_research_from_scratch.retrieval_bridge import run_fetch, run_search
 from deep_research_from_scratch.report_sources import (
     build_case_digest,
     build_procedural_timeline_digest,
@@ -49,13 +51,32 @@ from deep_research_from_scratch.source_registry import (
     filter_citable_sources,
     format_writer_source_registry,
 )
+from deep_research_from_scratch.validation.pipeline import (
+    extract_evidence_node,
+    format_evidence_for_state,
+    route_after_coverage,
+    run_pre_write_validation,
+)
 from deep_research_from_scratch.state_scope import AgentInputState, AgentState
+from deep_research_from_scratch.status_stream import (
+    astream_with_progress,
+    emit_think_step,
+    group_end,
+    group_start,
+)
 from deep_research_from_scratch.utils import get_today_str
 from typing_extensions import Literal
 
 import asyncio
 
-writer_model = get_chat_model("writer", max_tokens=app_config.DEEP_WRITER_MAX_TOKENS)
+_writer_model = None
+
+
+def _get_writer_model():
+    global _writer_model
+    if _writer_model is None:
+        _writer_model = get_chat_model("writer", max_tokens=app_config.DEEP_WRITER_MAX_TOKENS)
+    return _writer_model
 
 # ===== FINAL REPORT GENERATION =====
 
@@ -87,7 +108,9 @@ async def bootstrap_research(state: AgentState, config: RunnableConfig):
             break
 
     brief = state.get("research_brief") or ""
-    note, raw, sources = bootstrap_legal_research(brief, user_query)
+    note, raw, sources = await asyncio.to_thread(
+        bootstrap_legal_research, brief, user_query
+    )
     if not note:
         return {}
 
@@ -111,6 +134,38 @@ def route_after_bootstrap(
     return "supervisor_subgraph"
 
 
+async def run_supervisor_subgraph(state: AgentState, config: RunnableConfig) -> dict:
+    """Run the multi-agent supervisor with live progress forwarded to the UI."""
+    group_start("analyze", "Analyzing findings", "analyze")
+    emit_think_step("analyze", "Coordinating multi-agent research")
+
+    supervisor_input = {
+        "supervisor_messages": list(state.get("supervisor_messages") or []),
+        "research_brief": state.get("research_brief") or "",
+        "notes": list(state.get("notes") or []),
+        "research_iterations": state.get("research_iterations", 0) or 0,
+        "raw_notes": list(state.get("raw_notes") or []),
+        "retrieved_sources": list(state.get("retrieved_sources") or []),
+    }
+
+    result = await astream_with_progress(supervisor_agent, supervisor_input, config=config)
+
+    group_end("analyze", "Analysis complete")
+
+    update: dict = {}
+    for key in (
+        "supervisor_messages",
+        "notes",
+        "raw_notes",
+        "retrieved_sources",
+        "research_iterations",
+        "research_brief",
+    ):
+        if key in result and result[key] is not None:
+            update[key] = result[key]
+    return update
+
+
 # ===== SOURCE ENRICHMENT (re-fetch snippets + targeted searches) =====
 
 
@@ -126,7 +181,8 @@ async def enrich_sources(state: AgentState, config: RunnableConfig):
             user_query = str(getattr(message, "content", "") or "")
             break
 
-    enriched, note = enrich_retrieved_sources(
+    enriched, note = await asyncio.to_thread(
+        enrich_retrieved_sources,
         sources,
         research_brief=state.get("research_brief") or "",
         user_query=user_query,
@@ -137,6 +193,49 @@ async def enrich_sources(state: AgentState, config: RunnableConfig):
         notes.append(note)
         update["notes"] = notes
     return update
+
+
+# ===== SOURCE VALIDATION (Phases 1 + 4 + 6) =====
+
+
+async def validate_and_score_sources(state: AgentState, config: RunnableConfig):
+    """Validate and score retrieved sources before report generation."""
+    return run_pre_write_validation(state)
+
+
+async def targeted_gap_research(state: AgentState, config: RunnableConfig):
+    """Run targeted searches to fill coverage gaps."""
+    queries = state.get("coverage_gap_queries") or []
+    if not queries:
+        return {"gap_research_retries": state.get("gap_research_retries", 0) + 1}
+
+    new_sources: list[RetrievedSource] = []
+    raw_notes: list[str] = []
+    for query in queries[:2]:
+        _, sources = await asyncio.to_thread(
+            run_search, query, app_config.DEEP_BOOTSTRAP_RESULTS_PER_QUERY
+        )
+        for src in sources[:2]:
+            if src.url:
+                _, fetched = await asyncio.to_thread(run_fetch, src.url)
+                if fetched:
+                    new_sources.append(fetched)
+                    raw_notes.append(f"Gap research fetch: {fetched.title}")
+
+    update: dict = {
+        "gap_research_retries": state.get("gap_research_retries", 0) + 1,
+        "coverage_gap_queries": [],
+    }
+    if new_sources:
+        update["retrieved_sources"] = new_sources
+    if raw_notes:
+        update["raw_notes"] = raw_notes
+    return update
+
+
+async def extract_evidence(state: AgentState, config: RunnableConfig):
+    """Build evidence pack from validated sources."""
+    return extract_evidence_node(state)
 
 
 # ===== FINAL REPORT GENERATION =====
@@ -167,9 +266,9 @@ async def _invoke_writer(
             candidate_prompt = prompt.replace(findings, trimmed, 1)
 
         bound_model = (
-            writer_model.bind(max_tokens=max_tokens)
+            _get_writer_model().bind(max_tokens=max_tokens)
             if max_tokens is not None
-            else writer_model
+            else _get_writer_model()
         )
         try:
             result = await ainvoke_with_retry(
@@ -225,6 +324,7 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
         source_registry=source_registry,
         case_digest=case_digest,
         timeline_digest=timeline_digest,
+        evidence_pack=format_evidence_for_state(state),
         date=get_today_str(),
         verification_feedback=verification_feedback,
     )
@@ -236,6 +336,9 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
         requested_max_tokens=app_config.DEEP_WRITER_MAX_TOKENS,
         min_completion_tokens=app_config.DEEP_MIN_WRITER_COMPLETION_TOKENS,
     )
+
+    group_start("write", "Writing legal memorandum", "write")
+    emit_think_step("write", f"Structuring memo from {len(sources)} sources")
 
     try:
         content = await _invoke_writer(
@@ -261,6 +364,8 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
                 "Please retry. No legal conclusions should be drawn from this message."
             )
 
+    group_end("write", "Memorandum complete")
+
     return {"final_report": content}
 
 # ===== GRAPH CONSTRUCTION =====
@@ -273,10 +378,14 @@ deep_researcher_builder.add_node("compact_conversation", compact_conversation)
 deep_researcher_builder.add_node("clarify_with_user", clarify_with_user)
 deep_researcher_builder.add_node("write_research_brief", write_research_brief)
 deep_researcher_builder.add_node("bootstrap_research", bootstrap_research)
-deep_researcher_builder.add_node("supervisor_subgraph", supervisor_agent)
+deep_researcher_builder.add_node("supervisor_subgraph", run_supervisor_subgraph)
 deep_researcher_builder.add_node("enrich_sources", enrich_sources)
+deep_researcher_builder.add_node("validate_and_score_sources", validate_and_score_sources)
+deep_researcher_builder.add_node("targeted_gap_research", targeted_gap_research)
+deep_researcher_builder.add_node("extract_evidence", extract_evidence)
 deep_researcher_builder.add_node("final_report_generation", final_report_generation)
 deep_researcher_builder.add_node("verify_report", verify_report)
+deep_researcher_builder.add_node("sanitize_report", sanitize_report)
 deep_researcher_builder.add_node("finalize_report", finalize_report)
 
 # Add workflow edges
@@ -296,17 +405,26 @@ deep_researcher_builder.add_conditional_edges(
     },
 )
 deep_researcher_builder.add_edge("supervisor_subgraph", "enrich_sources")
-deep_researcher_builder.add_edge("enrich_sources", "final_report_generation")
+deep_researcher_builder.add_edge("enrich_sources", "validate_and_score_sources")
+deep_researcher_builder.add_conditional_edges(
+    "validate_and_score_sources",
+    route_after_coverage,
+    {
+        "targeted_gap_research": "targeted_gap_research",
+        "extract_evidence": "extract_evidence",
+    },
+)
+deep_researcher_builder.add_edge("targeted_gap_research", "validate_and_score_sources")
+deep_researcher_builder.add_edge("extract_evidence", "final_report_generation")
 deep_researcher_builder.add_edge("final_report_generation", "verify_report")
 deep_researcher_builder.add_conditional_edges(
     "verify_report",
     route_after_verify,
     {
-        "final_report_generation": "final_report_generation",  # revise with feedback
-        "finalize_report": "finalize_report",  # ship (passed, or retries exhausted -> caveats)
+        "final_report_generation": "final_report_generation",
+        "sanitize_report": "sanitize_report",
     },
 )
+deep_researcher_builder.add_edge("sanitize_report", "finalize_report")
 deep_researcher_builder.add_edge("finalize_report", END)
 
-# Compile the full workflow
-agent = deep_researcher_builder.compile()

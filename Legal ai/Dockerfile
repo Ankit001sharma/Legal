@@ -1,15 +1,43 @@
 FROM python:3.11-slim
 
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-COPY requirements.txt .
+
+
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+COPY Legal_Ai_Research_Agent /Legal_Ai_Research_Agent
+
+COPY legal_ai_platform /legal_ai_platform
+
+RUN pip install --no-cache-dir /Legal_Ai_Research_Agent /legal_ai_platform
+
+
+
+COPY ["Legal ai/requirements.txt", "requirements.txt"]
+
+# Install CPU-only torch first to prevent sentence-transformers from pulling the 900MB CUDA build
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY mcp/ mcp/
-COPY db/ db/
-COPY scripts/ scripts/
-COPY crawler/ crawler/
+
+
+COPY ["Legal ai/mcp/", "mcp/"]
+
+COPY ["Legal ai/db/", "db/"]
+
+COPY ["Legal ai/scripts/", "scripts/"]
+
+COPY ["Legal ai/crawler/", "crawler/"]
+
+
 
 EXPOSE 8001
 
+
+
 CMD ["uvicorn", "mcp.retrieval_server.main:app", "--host", "0.0.0.0", "--port", "8001"]
+

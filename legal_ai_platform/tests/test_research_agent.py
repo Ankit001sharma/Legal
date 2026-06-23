@@ -95,7 +95,9 @@ async def test_user_id_and_role_passed_to_graph():
             "tenant_id": "tenant-abc",
             "user_id": "user-xyz",
             "role": "tenant_user",
-        }
+            "research_mode": "normal",
+        },
+        "recursion_limit": 150,
     }
 
 
@@ -107,7 +109,12 @@ async def test_session_id_and_tenant_id_passed_to_graph():
     )
     assert response.session_id == "session-123"
     assert agent._graph.last_config == {
-        "configurable": {"thread_id": "session-123", "tenant_id": "tenant-abc"}
+        "configurable": {
+            "thread_id": "session-123",
+            "tenant_id": "tenant-abc",
+            "research_mode": "normal",
+        },
+        "recursion_limit": 150,
     }
 
 
@@ -146,7 +153,12 @@ async def test_session_id_is_preserved_and_passed_to_graph():
     )
     assert response.session_id == "session-123"
     assert agent._graph.last_config == {
-        "configurable": {"thread_id": "session-123", "tenant_id": None}
+        "configurable": {
+            "thread_id": "session-123",
+            "tenant_id": None,
+            "research_mode": "normal",
+        },
+        "recursion_limit": 150,
     }
 
 

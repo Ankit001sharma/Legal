@@ -35,17 +35,30 @@ from legal_ai_platform.gateway.sse import (
     wants_sse_stream,
 )
 from legal_ai_platform.models.agent import AgentRequest, AgentResponse
+from legal_ai_platform.observability.logging_setup import sanitize_for_log
 from legal_ai_platform.orchestration.orchestrator import AgentNotFoundError
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage platform container lifecycle."""
+    from legal_ai_platform.config import get_settings
+    from legal_ai_platform.observability.logging_setup import configure_logging
+
+    settings = get_settings()
+    configure_logging(settings.platform_log_level)
+
     container = get_container()
     init_db(container.settings.database_url)
     app.state.container = container
+    logger.info(
+        "platform started auth_required=%s retrieval_url=%s",
+        settings.auth_required,
+        settings.retrieval_server_url,
+    )
     yield
     await container.shutdown()
+    logger.info("platform shutdown complete")
 
 
 app = FastAPI(
@@ -81,11 +94,8 @@ async def query(
     container: PlatformContainer = app.state.container
     started = time.perf_counter()
     logger.info(
-        "query received task_type=%s query_len=%d session_id=%s user_id=%s sse=%s",
-        body.task_type,
-        len(body.query),
-        body.session_id,
-        body.user_id,
+        "query received body=%s sse=%s",
+        sanitize_for_log(body.model_dump()),
         wants_sse_stream(request),
     )
 
@@ -108,37 +118,6 @@ async def query(
         return response
     except AgentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@app.post("/query/stream")
-async def query_stream(
-    body: AgentRequest,
-    request: Request,
-    principal: Annotated[Principal, Depends(get_current_principal)],
-    db: Annotated[Session, Depends(get_db)],
-    token: Annotated[str | None, Depends(get_optional_bearer_token)],
-) -> StreamingResponse:
-    """Legacy SSE streaming endpoint (progress/token event format)."""
-    body = enrich_agent_request(body, principal, db, auth_token=token)
-    container: PlatformContainer = app.state.container
-    research_agent = container.orchestrator.registry.get("research")
-    if research_agent is None:
-        raise HTTPException(status_code=404, detail="Research agent not registered")
-
-    async def event_generator():
-        try:
-            async for event in research_agent.execute_stream(body):
-                if await request.is_disconnected():
-                    break
-                yield f"data: {json.dumps(event)}\n\n"
-        except Exception as exc:  # noqa: BLE001
-            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers=sse_response_headers(),
-    )
 
 
 # ── Auto-title endpoint ───────────────────────────────────────────────────────
@@ -178,5 +157,5 @@ async def generate_title(
         title = raw[:60] if raw else body.query[:56]
         return _TitleResponse(title=title)
     except Exception:  # noqa: BLE001
-        # Fall back to the raw query text — never fail the frontend.
+        logger.exception("title generation failed query_len=%d", len(body.query))
         return _TitleResponse(title=body.query[:56])

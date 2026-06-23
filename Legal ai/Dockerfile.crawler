@@ -1,14 +1,41 @@
 FROM python:3.11-slim
 
+
+
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
-COPY crawler/requirements.txt /app/crawler-requirements.txt
+
+
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+COPY Legal_Ai_Research_Agent /Legal_Ai_Research_Agent
+
+COPY legal_ai_platform /legal_ai_platform
+
+RUN pip install --no-cache-dir /Legal_Ai_Research_Agent /legal_ai_platform
+
+
+
+COPY ["Legal ai/requirements.txt", "/app/requirements.txt"]
+
+COPY ["Legal ai/crawler/requirements.txt", "/app/crawler-requirements.txt"]
+
+# Install CPU-only torch first to prevent sentence-transformers from pulling the 900MB CUDA build
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
 RUN pip install --no-cache-dir -r requirements.txt -r crawler-requirements.txt
 
-COPY mcp/ mcp/
-COPY db/ db/
-COPY crawler/ crawler/
-COPY scrapy.cfg scrapy.cfg
+
+
+COPY ["Legal ai/mcp/", "mcp/"]
+
+COPY ["Legal ai/db/", "db/"]
+
+COPY ["Legal ai/crawler/", "crawler/"]
+
+COPY ["Legal ai/scrapy.cfg", "scrapy.cfg"]
+
+
 
 CMD ["celery", "-A", "crawler.tasks", "worker", "--loglevel=info"]
+
