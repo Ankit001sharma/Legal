@@ -121,3 +121,28 @@ def test_build_ops_from_findings():
     assert artifact.ops.playbook_compare_count == 1
     assert len(artifact.gap_llm) == 1
     assert artifact.gap_llm[0].finding_id == "f2"
+
+
+def test_build_ops_zero_hit_ids():
+    state = {
+        "tenant_id": "demo",
+        "failed_sections": [
+            {
+                "section_id": "s2",
+                "stage": "retrieve",
+                "error_code": "retrieval_zero_hit",
+                "message": "No policy hits after retrieval attempts",
+            },
+            {
+                "section_id": "s9",
+                "stage": "retrieve",
+                "error_code": "retrieval_failed",
+                "message": "timeout",
+            },
+        ],
+        "compliance_stats": {"retrieval_zero_hit_sections": 1},
+    }
+    artifact = build_review_artifact(state)
+    assert artifact.ops.degraded_section_count == 2
+    assert artifact.ops.retrieval_zero_hit_section_ids == ["s2"]
+    assert artifact.ops.degraded_section_count == len(artifact.degraded_sections)

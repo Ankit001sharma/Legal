@@ -126,3 +126,22 @@ def test_query_terms_minerals_policy_phrase() -> None:
 def test_infer_categories_backward_compat() -> None:
     section = _section("Indemnification", "Vendor shall indemnify Customer.")
     assert infer_categories_from_section(section) == infer_lexical_classify(section).categories
+
+
+def test_lexical_body_beyond_200_chars() -> None:
+    prefix = "x" * 400
+    section = _section(
+        "Miscellaneous",
+        prefix + " The total limitation of liability shall not exceed fees paid.",
+    )
+    result = infer_lexical_classify(section)
+    assert "liability" in result.categories
+    assert result.confidence == "body"
+
+
+def test_lexical_full_body_short_section() -> None:
+    body = ("intro " * 50) + "Vendor shall indemnify Customer for third-party claims."
+    section = _section("Obligations", body)
+    result = infer_lexical_classify(section, full_body_max_chars=4000)
+    assert "indemnity" in result.categories
+

@@ -46,7 +46,6 @@ class DocumentStore(Protocol):
         title: str,
         kind: str,
         policy_type: str | None,
-        applies_to_contract_types: list[str],
         source: str,
         metadata: dict,
         index_status: Literal["pending", "indexed", "failed"],

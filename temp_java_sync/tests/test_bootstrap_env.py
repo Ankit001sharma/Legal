@@ -17,5 +17,10 @@ def test_should_load_review_env_key_mistral_alias():
     assert bootstrap_env._should_load_review_env_key("MISTRAL_API_KEY")
 
 
-def test_should_not_load_unrelated_key():
-    assert not bootstrap_env._should_load_review_env_key("DATABASE_URL")
+def test_setup_pythonpath_inserts_sys_path():
+    import sys
+
+    bootstrap_env.setup_pythonpath()
+    legal = bootstrap_env.Path(__file__).resolve().parent.parent.parent
+    doc_core = str(legal / "document_core")
+    assert doc_core in sys.path

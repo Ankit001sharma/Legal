@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from document_core.schemas.chunk import DocumentKind, IndexedChunk, SearchRequest
 from document_core.schemas.taxonomy import normalize_categories
@@ -14,6 +15,35 @@ from review_agent.services.section_category_lexical import (
     _CATEGORY_QUERY_TERMS,
     infer_lexical_classify,
 )
+
+
+def _scope_set(scope_document_ids: list[str] | None) -> set[str] | None:
+    if not scope_document_ids:
+        return None
+    out = {str(doc_id).strip() for doc_id in scope_document_ids if str(doc_id).strip()}
+    return out or None
+
+
+def _scope_uuids(scope_document_ids: list[str] | None) -> list[UUID] | None:
+    scope = _scope_set(scope_document_ids)
+    if not scope:
+        return None
+    uuids: list[UUID] = []
+    for raw in scope:
+        try:
+            uuids.append(UUID(raw))
+        except ValueError:
+            continue
+    return uuids or None
+
+
+def _filter_aggregated(
+    aggregated: dict[str, DiscoveredPolicy],
+    scope: set[str] | None,
+) -> dict[str, DiscoveredPolicy]:
+    if not scope:
+        return aggregated
+    return {doc_id: policy for doc_id, policy in aggregated.items() if doc_id in scope}
 
 
 def _cap_topics(topics: list[str], *, max_topics: int) -> list[str]:
@@ -124,7 +154,6 @@ def _build_discovered_policy(
     doc_title: str,
     topic_clean: str,
     score: float,
-    applies: list[str],
     existing: DiscoveredPolicy | None,
 ) -> DiscoveredPolicy:
     parent_categories = _categories_from_parent(parent)
@@ -134,7 +163,6 @@ def _build_discovered_policy(
         match_score = score
         title = doc_title or parent.title or ""
         policy_type = parent.policy_type
-        applies_to = list(applies)
     else:
         matched_topics = list(existing.matched_topics)
         if topic_clean not in matched_topics:
@@ -143,7 +171,6 @@ def _build_discovered_policy(
         match_score = max(existing.match_score, score)
         title = existing.title or doc_title or parent.title or ""
         policy_type = existing.policy_type or parent.policy_type
-        applies_to = existing.applies_to_contract_types or list(applies)
 
     policy_group = _policy_group_key(
         categories=categories,
@@ -157,7 +184,6 @@ def _build_discovered_policy(
         policy_type=policy_type,
         match_score=match_score,
         matched_topics=matched_topics,
-        applies_to_contract_types=applies_to,
         policy_group=policy_group,
         categories=categories,
     )
@@ -182,11 +208,52 @@ def _merge_aggregated(
             policy_type=existing.policy_type or policy.policy_type,
             match_score=max(existing.match_score, policy.match_score),
             matched_topics=merged_topics,
-            applies_to_contract_types=existing.applies_to_contract_types or policy.applies_to_contract_types,
             policy_group=existing.policy_group or policy.policy_group,
             categories=_merge_categories(existing.categories, policy.categories),
         )
     return base
+
+
+def _select_grouped_with_category_reserve(
+    ranked: list[DiscoveredPolicy],
+    section_categories: list[str],
+    *,
+    max_groups: int,
+    max_policies: int,
+) -> tuple[list[DiscoveredPolicy], int, int, int]:
+    """One best policy per section category, then fill remaining group slots."""
+    reserved: list[DiscoveredPolicy] = []
+    reserved_ids: set[str] = set()
+    for category in section_categories:
+        if category == "general":
+            continue
+        candidates = [policy for policy in ranked if category in policy.categories]
+        if not candidates:
+            continue
+        best = max(candidates, key=lambda item: item.match_score)
+        if best.document_id in reserved_ids:
+            continue
+        reserved_ids.add(best.document_id)
+        reserved.append(best)
+
+    reserved_take = sorted(reserved, key=lambda item: item.match_score, reverse=True)
+    if max_groups > 0 and len(reserved_take) > max_groups:
+        reserved_take = reserved_take[:max_groups]
+        reserved_ids = {policy.document_id for policy in reserved_take}
+
+    fill_cap = max(0, max_groups - len(reserved_take)) if max_groups > 0 else 0
+    remainder = [policy for policy in ranked if policy.document_id not in reserved_ids]
+    grouped, deduped, groups_before = _select_grouped_policies(
+        remainder,
+        max_groups=fill_cap,
+        max_policies=0,
+    )
+    combined = sorted(reserved_take + grouped, key=lambda item: item.match_score, reverse=True)
+    if max_policies > 0:
+        combined = combined[:max_policies]
+    elif max_groups > 0:
+        combined = combined[:max_groups]
+    return combined, deduped, groups_before, len(reserved_take)
 
 
 def _select_grouped_policies(
@@ -238,7 +305,10 @@ async def _search_topics(
     contract_type: str | None,
     policy_type: str | None,
     settings: ReviewSettings,
+    scope_document_ids: list[str] | None = None,
 ) -> dict[str, DiscoveredPolicy]:
+    scope = _scope_set(scope_document_ids)
+    doc_uuids = _scope_uuids(scope_document_ids)
     aggregated: dict[str, DiscoveredPolicy] = {}
     for topic_clean in topics:
         hits = await client.search_policy(
@@ -249,6 +319,7 @@ async def _search_topics(
                 contract_type=contract_type,
                 policy_type=policy_type,
                 top_k=settings.discovery_top_k_per_topic,
+                document_ids=doc_uuids,
             )
         )
         for hit in hits:
@@ -256,15 +327,15 @@ async def _search_topics(
                 continue
             parent = hit.parent_chunk
             doc_id = str(parent.document_id)
+            if scope and doc_id not in scope:
+                continue
             doc_title = str(parent.metadata.get("document_title") or "").strip() or parent.title or ""
-            applies = list(parent.applies_to_contract_types or [])
             aggregated[doc_id] = _build_discovered_policy(
                 parent=parent,
                 doc_id=doc_id,
                 doc_title=doc_title,
                 topic_clean=topic_clean,
                 score=hit.score,
-                applies=applies,
                 existing=aggregated.get(doc_id),
             )
     return aggregated
@@ -278,8 +349,11 @@ async def _discover_by_section_categories(
     contract_type: str | None,
     policy_type: str | None,
     settings: ReviewSettings,
+    scope_document_ids: list[str] | None = None,
 ) -> dict[str, DiscoveredPolicy]:
     """Category metadata sweep from lexical section scan (0 LLM)."""
+    scope = _scope_set(scope_document_ids)
+    doc_uuids = _scope_uuids(scope_document_ids)
     aggregated: dict[str, DiscoveredPolicy] = {}
     for category in categories:
         if category == "general":
@@ -294,6 +368,7 @@ async def _discover_by_section_categories(
                 contract_type=use_contract_type,
                 policy_type=policy_type,
                 top_k=settings.discovery_top_k_per_topic,
+                document_ids=doc_uuids,
             ),
             categories=[category],
         )
@@ -310,6 +385,7 @@ async def _discover_by_section_categories(
                     contract_type=None,
                     policy_type=policy_type,
                     top_k=settings.discovery_top_k_per_topic,
+                    document_ids=doc_uuids,
                 ),
                 categories=[category],
             )
@@ -318,18 +394,55 @@ async def _discover_by_section_categories(
                 continue
             parent = hit.parent_chunk
             doc_id = str(parent.document_id)
+            if scope and doc_id not in scope:
+                continue
             doc_title = str(parent.metadata.get("document_title") or "").strip() or parent.title or ""
-            applies = list(parent.applies_to_contract_types or [])
             topic_label = f"section_category:{category}"
+            score = min(hit.score * (1.0 + settings.discovery_category_score_boost), 1.0)
             aggregated[doc_id] = _build_discovered_policy(
                 parent=parent,
                 doc_id=doc_id,
                 doc_title=doc_title,
                 topic_clean=topic_label,
-                score=hit.score,
-                applies=applies,
+                score=score,
                 existing=aggregated.get(doc_id),
             )
+    return aggregated
+
+
+async def seed_discovered_from_scope(
+    client: DocumentMCPClient,
+    *,
+    tenant_id: str,
+    scope_document_ids: list[str],
+) -> dict[str, DiscoveredPolicy]:
+    """Registry-backed discovery rows for explicit request/session scope."""
+    scope = _scope_set(scope_document_ids)
+    if not scope:
+        return {}
+    registry = await client.list_policy_registry(tenant_id, kind="policy")
+    aggregated: dict[str, DiscoveredPolicy] = {}
+    for record in registry.policies:
+        doc_id = str(record.document_id)
+        if doc_id not in scope:
+            continue
+        raw_categories = record.metadata.get("categories") if isinstance(record.metadata, dict) else None
+        categories = normalize_categories(raw_categories if isinstance(raw_categories, list) else [])
+        topic_label = "scope:request"
+        aggregated[doc_id] = DiscoveredPolicy(
+            document_id=doc_id,
+            title=record.title,
+            policy_type=record.policy_type,
+            match_score=1.0,
+            matched_topics=[topic_label],
+            policy_group=_policy_group_key(
+                categories=categories,
+                metadata=record.metadata or {},
+                matched_topics=[topic_label],
+                document_id=doc_id,
+            ),
+            categories=categories,
+        )
     return aggregated
 
 
@@ -338,14 +451,24 @@ def _group_and_cap(
     *,
     settings: ReviewSettings,
     group_cap: int,
-) -> tuple[list[DiscoveredPolicy], int, int]:
+    section_categories: list[str] | None = None,
+) -> tuple[list[DiscoveredPolicy], int, int, int]:
     if settings.discovery_group_mode == "category":
-        return _select_grouped_policies(
+        if settings.discovery_category_reserve_slots and section_categories:
+            return _select_grouped_with_category_reserve(
+                ranked,
+                section_categories,
+                max_groups=group_cap,
+                max_policies=settings.discovery_max_policies,
+            )
+        grouped, deduped, groups_before = _select_grouped_policies(
             ranked,
             max_groups=group_cap,
             max_policies=settings.discovery_max_policies,
         )
-    return _apply_flat_cap(ranked, max_policies=settings.discovery_max_policies), 0, len(ranked)
+        return grouped, deduped, groups_before, 0
+    capped = _apply_flat_cap(ranked, max_policies=settings.discovery_max_policies)
+    return capped, 0, len(ranked), 0
 
 
 async def discover_policies_from_topics(
@@ -358,9 +481,12 @@ async def discover_policies_from_topics(
     settings: ReviewSettings,
     contract_sections: list[IndexedChunk] | None = None,
     reviewable_section_count: int = 0,
+    scope_document_ids: list[str] | None = None,
 ) -> tuple[list[DiscoveredPolicy], list[str], dict[str, Any]]:
     """Search tenant policy index per topic; group by category and cap scope."""
     warnings: list[str] = []
+    scope = _scope_set(scope_document_ids)
+    category_reserved = 0
     empty_meta = {
         "discovery_total_ranked": 0,
         "discovery_returned": 0,
@@ -374,7 +500,27 @@ async def discover_policies_from_topics(
         "discovery_contract_type_relaxed": False,
         "discovery_category_sweep_added": 0,
         "discovery_topics_searched": 0,
+        "discovery_scope_count": len(scope) if scope else 0,
+        "discovery_category_reserved": 0,
     }
+    if scope and not topics and not contract_sections:
+        seeded = await seed_discovered_from_scope(
+            client,
+            tenant_id=tenant_id,
+            scope_document_ids=list(scope),
+        )
+        capped = sorted(seeded.values(), key=lambda policy: policy.match_score, reverse=True)
+        empty_meta["discovery_returned"] = len(capped)
+        empty_meta["discovery_groups"] = len(capped)
+        empty_meta["discovery_section_categories"] = []
+        if capped:
+            warnings.append(f"Policy discovery constrained to {len(capped)} session policy/policies.")
+        else:
+            warnings.append(
+                f"No session policies found in registry for tenant '{tenant_id}'."
+            )
+        return capped, warnings, empty_meta
+
     if not topics and not contract_sections:
         warnings.append("No routing topics provided; policy discovery skipped.")
         return [], warnings, empty_meta
@@ -403,8 +549,9 @@ async def discover_policies_from_topics(
         contract_type=use_contract_type,
         policy_type=policy_type,
         settings=settings,
+        scope_document_ids=scope_document_ids,
     )
-    aggregated = dict(strict_aggregated)
+    aggregated = _filter_aggregated(dict(strict_aggregated), scope)
 
     sweep_added = 0
     if settings.discovery_section_category_sweep and section_categories:
@@ -415,20 +562,36 @@ async def discover_policies_from_topics(
             contract_type=contract_type,
             policy_type=policy_type,
             settings=settings,
+            scope_document_ids=scope_document_ids,
         )
         before_ids = set(aggregated.keys())
-        aggregated = _merge_aggregated(aggregated, sweep)
+        aggregated = _merge_aggregated(aggregated, _filter_aggregated(sweep, scope))
         sweep_added = len(set(aggregated.keys()) - before_ids)
 
-    ranked = sorted(aggregated.values(), key=lambda policy: policy.match_score, reverse=True)
-    capped, deduped, groups_before_cap = _group_and_cap(
-        ranked,
-        settings=settings,
-        group_cap=group_cap,
-    )
+    if scope:
+        seeded = await seed_discovered_from_scope(
+            client,
+            tenant_id=tenant_id,
+            scope_document_ids=list(scope),
+        )
+        aggregated = _merge_aggregated(aggregated, seeded)
+        ranked = sorted(aggregated.values(), key=lambda policy: policy.match_score, reverse=True)
+        capped = ranked
+        deduped = 0
+        groups_before_cap = len(capped)
+        warnings.append(f"Policy discovery constrained to {len(scope)} session policy/policies.")
+    else:
+        ranked = sorted(aggregated.values(), key=lambda policy: policy.match_score, reverse=True)
+        capped, deduped, groups_before_cap, category_reserved = _group_and_cap(
+            ranked,
+            settings=settings,
+            group_cap=group_cap,
+            section_categories=section_categories,
+        )
 
     if (
-        settings.discovery_contract_type_filter
+        not scope
+        and settings.discovery_contract_type_filter
         and contract_type
         and len(strict_aggregated) == 0
     ):
@@ -439,6 +602,7 @@ async def discover_policies_from_topics(
             contract_type=None,
             policy_type=policy_type,
             settings=settings,
+            scope_document_ids=scope_document_ids,
         )
         if settings.discovery_section_category_sweep and section_categories:
             sweep = await _discover_by_section_categories(
@@ -448,22 +612,33 @@ async def discover_policies_from_topics(
                 contract_type=contract_type,
                 policy_type=policy_type,
                 settings=settings,
+                scope_document_ids=scope_document_ids,
             )
             fallback_agg = _merge_aggregated(fallback_agg, sweep)
-        merged = _merge_aggregated(dict(aggregated), fallback_agg)
-        ranked = sorted(merged.values(), key=lambda policy: policy.match_score, reverse=True)
-        capped, deduped, groups_before_cap = _group_and_cap(
-            ranked,
-            settings=settings,
-            group_cap=group_cap,
-        )
+        merged = _merge_aggregated(dict(aggregated), _filter_aggregated(fallback_agg, scope))
+        if scope:
+            merged = _merge_aggregated(merged, await seed_discovered_from_scope(
+                client, tenant_id=tenant_id, scope_document_ids=list(scope),
+            ))
+            ranked = sorted(merged.values(), key=lambda policy: policy.match_score, reverse=True)
+            capped = ranked
+            deduped = 0
+            groups_before_cap = len(capped)
+        else:
+            ranked = sorted(merged.values(), key=lambda policy: policy.match_score, reverse=True)
+            capped, deduped, groups_before_cap, category_reserved = _group_and_cap(
+                ranked,
+                settings=settings,
+                group_cap=group_cap,
+                section_categories=section_categories,
+            )
         contract_type_relaxed = True
         if settings.discovery_warn_on_cap:
             warnings.append(
                 "Policy discovery relaxed contract_type filter (sparse hits with strict filter)."
             )
 
-    if settings.discovery_group_mode == "category":
+    if not scope and settings.discovery_group_mode == "category":
         if settings.discovery_warn_on_cap and deduped > 0:
             warnings.append(
                 f"Policy discovery grouped {len(ranked)} candidates into "
@@ -479,7 +654,8 @@ async def discover_policies_from_topics(
                 f"{groups_before_cap - len(capped)} group(s) omitted."
             )
     elif (
-        settings.discovery_warn_on_cap
+        not scope
+        and settings.discovery_warn_on_cap
         and settings.discovery_max_policies > 0
         and len(ranked) > len(capped)
     ):
@@ -490,7 +666,8 @@ async def discover_policies_from_topics(
         )
 
     if (
-        settings.discovery_warn_on_cap
+        not scope
+        and settings.discovery_warn_on_cap
         and settings.discovery_group_mode == "category"
         and settings.discovery_max_policies > 0
         and len(ranked) > len(capped)
@@ -515,6 +692,8 @@ async def discover_policies_from_topics(
         "discovery_category_sweep_added": sweep_added,
         "discovery_topics_searched": len(search_topics),
         "discovery_section_categories": section_categories,
+        "discovery_scope_count": len(scope) if scope else 0,
+        "discovery_category_reserved": category_reserved,
     }
 
     if not capped:
@@ -533,7 +712,6 @@ def discovered_to_indexed_entries(policies: list[DiscoveredPolicy]) -> list[dict
             "document_id": p.document_id,
             "title": p.title,
             "policy_type": p.policy_type,
-            "applies_to_contract_types": list(p.applies_to_contract_types),
             "discovery_score": p.match_score,
             "matched_topics": list(p.matched_topics),
             "policy_group": p.policy_group,

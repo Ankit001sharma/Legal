@@ -7,6 +7,7 @@ from document_core.schemas.compliance import ComplianceFinding, ComplianceStatus
 from review_agent.config import ReviewSettings
 from review_agent.services.section_gap_status import (
     is_boilerplate_section,
+    is_non_substantive_section,
     resolve_gap_finding_status,
     upgrade_substantive_gap_finding,
 )
@@ -24,6 +25,12 @@ def _section(title: str, text: str = "x" * 50, section_id: str = "s1") -> Indexe
         title=title,
         text=text,
     )
+
+
+def test_parties_boilerplate_classify():
+    section = _section("Parties and Effective Date", "Acme and Vendor enter this Agreement.")
+    assert is_boilerplate_section(section) is True
+    assert is_non_substantive_section(section) is True
 
 
 def test_boilerplate_definitions_insufficient():

@@ -1,0 +1,190 @@
+NON-DISCLOSURE AGREEMENT
+Mutual Confidentiality & Data Protection
+Xecurify Inc. | miniOrange Security Software Pvt. Ltd.
+Disclosing Party
+Xecurify Inc. and/or miniOrange Security Software Pvt. Ltd. (collectively "Xecurify")
+Receiving Party
+________________________________________ ("Recipient")
+Effective Date
+________________________________________ ("Effective Date")
+Purpose
+Evaluation of a potential business relationship and/or use of Xecurify products and services
+Governing Law
+State of Wyoming, USA
+Agreement Term
+Two (2) years from the Effective Date, unless terminated earlier
+
+WHEREAS, Xecurify Inc. (a Wyoming corporation) and miniOrange Security Software Pvt. Ltd. (an Indian company) and the Recipient desire to explore a potential business relationship and, in connection therewith, each party may disclose certain Confidential Information to the other;
+NOW, THEREFORE, in consideration of the mutual promises contained herein and for other good and valuable consideration, the parties agree as follows:
+
+1. Definitions
+For purposes of this Agreement, the following terms shall have the meanings set forth below:
+
+1.1 Confidential Information
+"Confidential Information" means any and all non-public information disclosed by one party ("Disclosing Party") to the other party ("Receiving Party"), whether orally, in writing, digitally, or by any other means, that is designated as confidential or that reasonably should be understood to be confidential given the nature of the information and circumstances of disclosure. Without limitation, Confidential Information includes:
+    • Technical data, source code, software, databases, algorithms, encryption keys, and security architectures
+    • Business plans, financial information, customer lists, pricing, and commercial strategies
+    • Product and service specifications, research, development, and intellectual property
+    • Personal Data processed by Xecurify, as defined under applicable data protection laws including the EU General Data Protection Regulation (GDPR) and India's Digital Personal Data Protection Act, 2023 (DPDPA)
+    • Security practices, penetration test results, vulnerability assessments, and infrastructure details
+    • Information provided under Xecurify's Privacy Policy, Terms of Service, Data Retention Policy, and Code of Conduct
+    • Any information received through communications channels including email, SMS, WhatsApp, or calls
+
+1.2 Exclusions
+Confidential Information does not include information that:
+    (a) Is or becomes publicly available through no act or omission of the Receiving Party;
+    (b) Was rightfully known to the Receiving Party prior to disclosure without restriction;
+    (c) Is rightfully received by the Receiving Party from a third party without restriction;
+    (d) Is independently developed by the Receiving Party without use of or reference to the Disclosing Party's Confidential Information;
+    (e) Is required to be disclosed by applicable law, regulation, or court order, provided the Receiving Party gives prompt prior written notice to the Disclosing Party.
+
+2. Obligations of Confidentiality
+2.1 Non-Disclosure
+The Receiving Party agrees to:
+    • Hold all Confidential Information in strict confidence and not disclose it to any third party without prior written consent from the Disclosing Party;
+    • Use the Confidential Information solely for the Purpose described in this Agreement;
+    • Limit access to Confidential Information to those employees, contractors, and authorized third parties who have a need to know and are bound by written confidentiality obligations no less protective than those in this Agreement;
+    • Protect the Confidential Information using at least the same degree of care it uses to protect its own confidential information, and in no event less than reasonable care;
+    • Promptly notify the Disclosing Party upon discovery of any unauthorized use or disclosure of Confidential Information.
+
+2.2 Data Protection Compliance
+Where Confidential Information constitutes Personal Data, the Receiving Party shall additionally comply with:
+    • The EU General Data Protection Regulation (GDPR), including obligations applicable to processors and controllers;
+    • India's Digital Personal Data Protection Act, 2023 (DPDPA);
+    • All applicable laws and regulations of the jurisdictions in which either party operates;
+    • Xecurify's Data Retention Policy, including retention schedules and secure deletion requirements;
+    • Xecurify's Security Practices Policy, including encryption, access control, and incident reporting standards;
+    • Xecurify's Privacy Policy with respect to collection, processing, and sharing of Personal Data.
+
+2.3 Security Standards
+The Receiving Party shall implement and maintain security measures consistent with those described in Xecurify's Security Practices Policy, including but not limited to:
+    • Encryption of all Personal Data and Confidential Information at rest using AES-256 and in transit using TLS 1.2 or higher;
+    • Multi-factor authentication for access to systems containing Confidential Information;
+    • Protection against Cross-Site Scripting (XSS), SQL Injection, Cross-Site Request Forgery (CSRF), and other common vulnerabilities;
+    • Physical security controls preventing unauthorized access to systems and records;
+    • Immediate revocation of access credentials upon termination of any individual's involvement.
+
+3. Data Retention and Destruction
+3.1 Retention Periods
+To the extent the Receiving Party handles Confidential Information constituting Personal Data or business records, it shall adhere to the following retention guidelines consistent with Xecurify's Data Retention Policy:
+    • Account and contact information: duration of the relationship plus three (3) years;
+    • Transaction records: seven (7) years as required by applicable tax and accounting laws;
+    • Contractual documents: seven (7) years following the end of the contract;
+    • Consent records: seven (7) years following withdrawal of consent;
+    • Support and communication data: two (2) years following resolution.
+
+3.2 Secure Deletion
+Upon termination or expiration of this Agreement, or upon written request, the Receiving Party shall:
+    • Securely delete or destroy all Confidential Information from all production and backup systems;
+    • For electronic data: use secure erasure or cryptographic wiping methods;
+    • For physical records: use cross-cut shredding, incineration, or equivalent destruction methods;
+    • Provide written certification of destruction within thirty (30) days of the Disclosing Party's request;
+    • Maintain audit logs of all deletion events for regulatory review.
+
+3.3 Legal Hold
+Notwithstanding the foregoing, if Confidential Information is subject to a litigation hold, ongoing audit, or regulatory investigation, regular deletion obligations are suspended for affected data until released in writing by the Disclosing Party's legal counsel.
+
+4. Intellectual Property
+Nothing in this Agreement grants the Receiving Party any license, right, title, or interest in or to any intellectual property of the Disclosing Party. All Confidential Information remains the exclusive property of the Disclosing Party. The Receiving Party acknowledges that Xecurify's trademarks, service marks, logos, software, source code, and other intellectual property are among its most valuable assets and are protected by copyright, trademark, and intellectual property laws of the United States, India, and other applicable jurisdictions.
+
+The Receiving Party shall not:
+    • Use any Xecurify trademark, logo, or trade name without prior express written consent;
+    • Register or use any domain name, email address, or social media profile incorporating Xecurify's trademarks;
+    • Reverse engineer, decompile, disassemble, or attempt to derive source code from any Xecurify software or service;
+    • Create derivative works based on Xecurify's Confidential Information without written authorization.
+
+5. Code of Conduct Alignment
+In connection with this Agreement, the Receiving Party agrees to uphold Xecurify's Code of Conduct principles and shall:
+5.1 Legal Compliance
+    • Comply with all applicable laws and regulations of the countries in which it operates;
+    • Adhere to applicable anti-money laundering (AML) legislation and sanctions compliance requirements;
+    • Refrain from any form of bribery, corruption, extortion, or facilitation payments;
+    • Comply with all relevant export control and trade sanctions laws.
+
+5.2 Human Rights & Labor
+    • Support and respect internationally proclaimed human rights;
+    • Ensure all work is performed voluntarily; not use forced, compulsory, or child labor;
+    • Pay fair wages commensurate with prevailing industry conditions or the applicable minimum wage, whichever is higher;
+    • Respect workers' rights to freedom of association and collective bargaining;
+    • Provide a safe, hygienic working environment in compliance with applicable health and safety laws.
+
+5.3 Environmental Responsibility
+    • Support a precautionary approach to environmental challenges;
+    • Encourage the development and use of environmentally friendly technologies;
+    • Endeavor to reduce operational environmental impacts including resource consumption, waste production, and air emissions.
+
+5.4 Diversity & Inclusion
+    • Treat all employees and partners with dignity and respect;
+    • Maintain a workplace free from discrimination, harassment, abuse, and violence;
+    • Adhere to equal opportunity principles across all aspects of employment and engagement.
+
+5.5 Anti-Modern Slavery
+The Receiving Party acknowledges Xecurify's commitment to eliminating modern slavery and human trafficking from its supply chains and agrees that it will not engage in or be complicit in any form of forced labor, human trafficking, or modern slavery in connection with any activities related to this Agreement.
+
+6. Cross-Border Data Transfers
+Where Confidential Information constituting Personal Data is transferred across national borders, the Receiving Party shall:
+    • Implement appropriate safeguards as required under applicable law, including Standard Contractual Clauses (SCCs) approved by the European Commission for EEA data transfers;
+    • Obtain any required government approvals for international data transfers under the DPDPA;
+    • Notify the Disclosing Party prior to any cross-border transfer of Personal Data;
+    • Ensure receiving jurisdictions offer adequate levels of data protection consistent with this Agreement.
+
+7. Term and Termination
+This Agreement shall commence on the Effective Date and remain in force for two (2) years unless earlier terminated by either party upon thirty (30) days' written notice. Obligations of confidentiality shall survive termination or expiration of this Agreement for a period of five (5) years, or indefinitely with respect to trade secrets, Personal Data, and security-related Confidential Information.
+
+Upon termination:
+    • Each party shall promptly return or destroy all Confidential Information of the other party as directed in Section 3.2;
+    • Sections 2, 3, 4, 7, 8, 9, 10, and 11 shall survive termination.
+
+8. Breach and Remedies
+The Receiving Party acknowledges that any breach or threatened breach of this Agreement may cause irreparable harm to the Disclosing Party for which monetary damages would be an insufficient remedy. Accordingly, the Disclosing Party shall be entitled to seek equitable relief, including injunctions and specific performance, in addition to all other remedies available at law or in equity, without the requirement to post bond.
+
+The Receiving Party shall be liable for any breach of this Agreement by its employees, contractors, agents, or authorized third parties.
+
+9. Disclaimer and Limitation of Liability
+All Confidential Information is provided "AS IS" without warranty of any kind. The Disclosing Party makes no representations or warranties, express or implied, regarding the accuracy, completeness, or fitness for a particular purpose of the Confidential Information.
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL EITHER PARTY BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, PUNITIVE, OR CONSEQUENTIAL DAMAGES ARISING OUT OF OR RELATED TO THIS AGREEMENT, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+10. General Provisions
+10.1 Governing Law and Dispute Resolution
+This Agreement shall be governed by and construed in accordance with the laws of the State of Wyoming, USA, without regard to its conflict of law provisions. Any dispute arising under this Agreement shall be subject to the exclusive jurisdiction of the courts of the State of Wyoming.
+
+10.2 Entire Agreement
+This Agreement constitutes the entire agreement between the parties with respect to the subject matter hereof and supersedes all prior discussions, understandings, and agreements. This Agreement may only be amended by a written instrument signed by authorized representatives of both parties.
+
+10.3 Severability
+If any provision of this Agreement is found to be invalid, illegal, or unenforceable, such provision shall be modified to the minimum extent necessary to make it enforceable, and the remaining provisions shall continue in full force and effect.
+
+10.4 Waiver
+No failure or delay by either party in exercising any right under this Agreement shall constitute a waiver of that right. All waivers must be in writing signed by an authorized representative.
+
+10.5 Notices
+All notices under this Agreement shall be in writing and delivered to the addresses set forth herein or as updated in writing. Notices to Xecurify shall be sent to: info@xecurify.com | +1 978 658 9387 | www.miniorange.com.
+
+10.6 Assignment
+Neither party may assign this Agreement or any rights or obligations hereunder without the prior written consent of the other party, except in connection with a merger, acquisition, or sale of all or substantially all of a party's assets.
+
+10.7 Counterparts
+This Agreement may be executed in counterparts, each of which shall be deemed an original and all of which together shall constitute one and the same instrument. Electronic signatures shall be deemed valid.
+
+11. Data Principal Rights
+Where Confidential Information includes Personal Data of individuals, the Receiving Party agrees to honor and facilitate the following data subject rights in accordance with GDPR, DPDPA, and Xecurify's Privacy Policy:
+    • Right to access: provide individuals with access to their Personal Data upon request;
+    • Right to rectification: correct inaccurate or incomplete Personal Data;
+    • Right to erasure: delete Personal Data upon request, subject to applicable legal retention requirements;
+    • Right to restriction of processing: restrict processing upon request where applicable;
+    • Right to data portability: transfer Personal Data in a structured, machine-readable format;
+    • Right to object: honor objections to processing, including for direct marketing purposes.
+
+The Receiving Party shall respond to data subject requests without undue delay and in accordance with applicable law.
+
+AGREED AND ACCEPTED
+IN WITNESS WHEREOF, the parties have executed this Non-Disclosure Agreement as of the Effective Date first written above.
+
+Authorized Signatory — Xecurify / miniOrange
+Authorized Signatory — Recipient
+Printed Name & Title
+Date
+Entity Name
+
+Xecurify Inc. | miniOrange Security Software Pvt. Ltd.   |   info@xecurify.com   |   +1 978 658 9387   |   www.miniorange.com

@@ -10,9 +10,12 @@ class SectionCategoryResult(BaseModel):
     categories: list[str] = Field(default_factory=list)
     query_terms: list[str] = Field(default_factory=list)
     classify_warning: str | None = None
+    substantive: bool = True
+    related_section_ids: list[str] = Field(default_factory=list)
 
 
 class SectionCategoryLLMResult(BaseModel):
+    section_id: str | None = None
     categories: list[str] = Field(default_factory=list)
     query_terms: list[str] = Field(default_factory=list)
 

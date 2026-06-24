@@ -51,6 +51,29 @@ def test_render_markdown_includes_summary_and_ops():
     assert "compare_items" not in md.lower()
 
 
+def test_render_markdown_renders_degraded_count():
+    artifact = ReviewArtifact(
+        run_id="run-2",
+        tenant_id="demo",
+        contract_document_id=str(uuid.uuid4()),
+        contract_title="NDA",
+        ops=ReviewArtifactOps(
+            retrieval_zero_hit_sections=2,
+            degraded_section_count=2,
+            retrieval_zero_hit_section_ids=["6", "7"],
+        ),
+    )
+    report = ReviewReport(
+        tenant_id="demo",
+        contract_document_id=uuid.uuid4(),
+        contract_title="NDA",
+        findings=[],
+    )
+    md = render_markdown_report(report, artifact=artifact)
+    assert "Degraded sections | 2" in md
+    assert "Zero-hit section IDs | 6, 7" in md
+
+
 def test_render_markdown_without_artifact_still_works():
     report = ReviewReport(
         tenant_id="demo",

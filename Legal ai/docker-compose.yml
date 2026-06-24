@@ -34,6 +34,13 @@ services:
       POSTGRES_USER: legalai
       POSTGRES_PASSWORD: legalai
       POSTGRES_DB: legalai
+    command: >
+      postgres
+        -c shared_buffers=256MB
+        -c maintenance_work_mem=128MB
+        -c effective_cache_size=512MB
+        -c work_mem=8MB
+        -c max_connections=100
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -48,6 +55,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   db-migrate:
     build:
@@ -102,7 +113,6 @@ services:
       DATABASE_URL: postgresql://legalai:legalai@postgres:5432/legalai
       SEARCH_BACKEND: hybrid
       EMBEDDING_MODEL: nomic-ai/modernbert-embed-base
-      POLICY_CATALOG_URL: ${POLICY_CATALOG_URL:-}
     networks:
       - legalai-internal
     depends_on:

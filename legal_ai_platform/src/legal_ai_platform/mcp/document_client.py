@@ -83,16 +83,3 @@ class DocumentMCPClient(BaseMCPClient):
             GetPolicyByRefRequest(tenant_id=tenant_id, policy_ref=policy_ref).model_dump(mode="json"),
         )
         return PolicyRegistryRecord.model_validate(data)
-
-    async def sync_policy_from_catalog(self, tenant_id: str, policy_ref: str, *, force_reindex: bool = False):
-        from document_core.schemas.registry import SyncPolicyFromCatalogRequest
-
-        data = await self._post(
-            "/tools/sync_policy_from_catalog",
-            SyncPolicyFromCatalogRequest(
-                tenant_id=tenant_id,
-                policy_ref=policy_ref,
-                force_reindex=force_reindex,
-            ).model_dump(mode="json"),
-        )
-        return IngestResult.model_validate(data)

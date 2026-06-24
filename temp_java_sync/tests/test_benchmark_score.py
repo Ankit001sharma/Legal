@@ -95,3 +95,39 @@ def test_gold_contract_fixture_has_twenty_sections():
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
     assert contract["contract_ref"] == "scale-enterprise-msa-2026"
     assert len(contract["sections"]) == 20
+
+
+def test_playbook_family_alignment_sla_section():
+    from beta_test.benchmark_score import load_gold_eval, score_playbook_family_alignment
+
+    eval_path = FIXTURES / "enterprise_msa_eval.json"
+    specs, _ = load_gold_eval(eval_path)
+    findings = {
+        "13": {
+            "status": "INSUFFICIENT_POLICY_CONTEXT",
+            "policy_ref": "playbook-sla-availability",
+            "policy_categories": ["sla"],
+            "policy_title": "SLA Availability Standard",
+        }
+    }
+    hits, results = score_playbook_family_alignment(findings, specs, section_ids=["13"])
+    assert hits == 1
+    assert results[0]["match"] is True
+
+
+def test_playbook_family_alignment_rejects_wrong_family():
+    from beta_test.benchmark_score import load_gold_eval, score_playbook_family_alignment
+
+    eval_path = FIXTURES / "enterprise_msa_eval.json"
+    specs, _ = load_gold_eval(eval_path)
+    findings = {
+        "13": {
+            "status": "INSUFFICIENT_POLICY_CONTEXT",
+            "policy_ref": "playbook-confidentiality-survival",
+            "policy_categories": ["confidentiality"],
+            "policy_title": "Confidentiality Survival",
+        }
+    }
+    hits, results = score_playbook_family_alignment(findings, specs, section_ids=["13"])
+    assert hits == 0
+    assert results[0]["match"] is False

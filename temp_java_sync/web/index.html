@@ -9,7 +9,7 @@
 <body>
   <header>
     <h1>Legal Review Dev UI</h1>
-    <p class="subtitle">Java-sync substitute + prod review path (contract_document_id)</p>
+    <p class="subtitle">Prod-style flow: index tenant policies (raw text), then review full contract text via POST /query</p>
   </header>
 
   <main class="layout">
@@ -26,42 +26,68 @@
     </section>
 
     <section class="panel actions">
-      <h2>Test actions (fixtures)</h2>
+      <h2>Quick actions (fixtures)</h2>
       <div class="btn-row wrap">
-        <button id="btnSync" class="primary">1. Java sync (NDA + policies)</button>
-        <button id="btnReview" class="primary">2. Run review (direct)</button>
+        <button id="btnSync" class="primary">1. Index fixture policies</button>
+        <button id="btnReview" class="primary">2. Review fixture NDA (direct)</button>
         <button id="btnReviewPlatform" class="primary">2b. Review via platform :8080</button>
         <button id="btnTombstone" class="secondary">3. Tombstone smoke</button>
         <button id="btnFullE2e" class="accent">Run full E2E</button>
       </div>
       <div id="status" class="status">Ready</div>
-      <div id="contractId" class="chip hidden"></div>
+      <div id="sessionInfo" class="chip hidden"></div>
     </section>
 
-    <section class="panel custom-docs">
-      <h2>Paste contract &amp; policies</h2>
-      <p class="panel-hint">Type or paste your contract sections and playbook policies below, then sync and review — no JSON files needed.</p>
+    <section class="panel policies-panel">
+      <h2>1. Index tenant policies</h2>
+      <p class="panel-hint">
+        Paste playbook / policy standards as raw text. Categories are assigned automatically at ingest by document_core (Phase 37C) — no manual tags.
+      </p>
 
-      <div class="custom-grid">
-        <div class="custom-block">
-          <h3>Contract</h3>
-          <label>Title<input id="customContractTitle" type="text" value="My Contract" /></label>
-          <label>Contract type<input id="customContractType" type="text" value="nda" placeholder="nda, msa, …" /></label>
-          <div id="contractSections" class="section-list"></div>
-          <button type="button" id="btnAddSection" class="secondary small">+ Add section</button>
-        </div>
-
-        <div class="custom-block">
-          <h3>Policies / playbooks</h3>
-          <div id="policyBlocks" class="policy-list"></div>
-          <button type="button" id="btnAddPolicy" class="secondary small">+ Add policy</button>
-        </div>
+      <div class="custom-options">
+        <label class="inline-check">
+          <input id="useSharedTenant" type="checkbox" checked />
+          Use configured tenant ID
+        </label>
+        <label class="inline-check shared-only" id="replacePoliciesRow">
+          <input id="replaceTenantPolicies" type="checkbox" checked />
+          Replace tenant policies before sync
+        </label>
+        <label>Active tenant<input id="sessionTenantId" type="text" readonly placeholder="uses config tenant when checked above" /></label>
       </div>
 
+      <div id="policyBlocks" class="policy-list"></div>
+      <button type="button" id="btnAddPolicy" class="secondary small">+ Add policy</button>
+
+      <div id="preflightPanel" class="preflight hidden"></div>
+
       <div class="btn-row wrap custom-actions">
-        <button id="btnCustomReview" class="accent">Sync &amp; review my text</button>
-        <button id="btnCustomSync" class="secondary">Sync only (no review)</button>
-        <button id="btnLoadSample" class="secondary">Load sample NDA</button>
+        <button id="btnSyncPolicies" class="accent">Index policies</button>
+        <button id="btnLoadSamplePolicies" class="secondary">Load sample policies</button>
+      </div>
+    </section>
+
+    <section class="panel review-panel">
+      <h2>2. Review contract (raw text)</h2>
+      <p class="panel-hint">
+        Paste the full contract as one block — same as Java sending <code>contract_text</code> from PDF extract.
+        No PDF upload, no manual sections, no normalization service.
+      </p>
+
+      <label>Review query<textarea id="reviewQuery" rows="2" placeholder="Review this NDA against our policies">Review this contract against our policies</textarea></label>
+      <div class="meta-row">
+        <label>Contract title<input id="contractTitle" type="text" value="Mutual Non-Disclosure Agreement" /></label>
+        <label>Contract type<input id="contractType" type="text" value="nda" placeholder="nda, msa, …" /></label>
+      </div>
+      <label>Contract text (full document)
+        <textarea id="contractText" rows="14" placeholder="Paste entire contract raw text here…"></textarea>
+      </label>
+      <div id="contractCharCount" class="muted small">0 characters</div>
+
+      <div class="btn-row wrap custom-actions">
+        <button id="btnReviewText" class="accent">Run review (direct)</button>
+        <button id="btnReviewTextPlatform" class="primary">Review via platform :8080</button>
+        <button id="btnLoadSampleContract" class="secondary">Load sample NDA text</button>
       </div>
     </section>
 
@@ -82,6 +108,6 @@
     </section>
   </main>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=5"></script>
 </body>
 </html>

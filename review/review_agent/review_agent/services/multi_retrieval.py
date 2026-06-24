@@ -11,6 +11,7 @@ from document_core.config import get_settings as get_core_settings
 from document_core.schemas.chunk import DocumentKind, IndexedChunk, RetrievalHit, SearchRequest
 from document_core.schemas.taxonomy import normalize_categories
 from document_core.search.reranker import rerank_hits
+from document_core.services.search import count_parent_category_hits
 from review_agent.clients.document_client import DocumentMCPClient
 from review_agent.config import ReviewSettings, get_settings
 from review_agent.schemas.section_classify import SectionCategoryResult
@@ -18,6 +19,22 @@ from review_agent.schemas.section_retrieval import SectionRetrievalBundle
 from review_agent.services.section_classifier import classify_section_policies
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_path_scores(hits: list[RetrievalHit]) -> list[RetrievalHit]:
+    """Min-max normalize scores within a single retrieval path.
+
+    Skips normalization for single-hit lists (no range to scale).
+    """
+    if len(hits) < 2:
+        return hits
+    scores = [h.score for h in hits]
+    lo, hi = min(scores), max(scores)
+    span = hi - lo or 1.0
+    return [
+        h.model_copy(update={"score": (h.score - lo) / span})
+        for h in hits
+    ]
 
 
 def _union_hits(
@@ -40,6 +57,26 @@ def _union_hits(
     return ordered
 
 
+def _diverse_top_k(
+    hits: list[RetrievalHit],
+    top_k: int,
+    *,
+    max_per_document: int = 3,
+) -> list[RetrievalHit]:
+    """Cap hits per document_id to enforce diversity before rerank."""
+    doc_count: dict[str, int] = {}
+    selected: list[RetrievalHit] = []
+    for hit in sorted(hits, key=lambda h: h.score, reverse=True):
+        doc_id = str(hit.parent_chunk.document_id)
+        if doc_count.get(doc_id, 0) >= max_per_document:
+            continue
+        doc_count[doc_id] = doc_count.get(doc_id, 0) + 1
+        selected.append(hit)
+        if len(selected) >= top_k:
+            break
+    return selected
+
+
 def _parse_scope_ids(scope_document_ids: list[str] | None) -> set[str]:
     return {str(item).strip() for item in (scope_document_ids or []) if str(item).strip()}
 
@@ -53,12 +90,27 @@ def _query_for_attempt(
     classification: SectionCategoryResult,
     section: IndexedChunk,
     attempt: int,
+    *,
+    contract_routing: dict[str, Any] | None = None,
 ) -> tuple[str, list[str], bool]:
     terms = classification.query_terms or []
     title = (section.title or section.section_id or "").strip()
 
     if attempt == 0:
         query = terms[0] if terms else title
+        if _is_general_only(classification.categories) and contract_routing:
+            topics = contract_routing.get("topics") or []
+            title_lower = title.lower()
+            for topic in topics:
+                if isinstance(topic, str):
+                    label = topic.strip()
+                elif isinstance(topic, dict):
+                    label = str(topic.get("label") or topic.get("topic") or "").strip()
+                else:
+                    label = str(topic).strip()
+                if label and label.lower() in title_lower:
+                    query = label
+                    break
         return query, list(classification.categories), True
     if attempt == 1:
         if len(terms) > 1:
@@ -170,9 +222,11 @@ async def _retrieve_attempt(
     async def meta_path() -> list[RetrievalHit]:
         if not categories:
             step["metadata_count"] = 0
+            step["parent_category_hits"] = 0
             return []
         hits = await client.search_policy_by_categories(base, categories=categories)
         step["metadata_count"] = len(hits)
+        step["parent_category_hits"] = count_parent_category_hits(hits, categories)
         return hits
 
     dense_hits, fts_hits, meta_hits = await asyncio.gather(
@@ -180,11 +234,22 @@ async def _retrieve_attempt(
         fts_path(),
         meta_path(),
     )
-    union = _union_hits(dense_hits, fts_hits, meta_hits, paths=step)
+    union = _union_hits(
+        _normalize_path_scores(dense_hits),
+        _normalize_path_scores(fts_hits),
+        _normalize_path_scores(meta_hits),
+        paths=step,
+    )
+    diverse = _diverse_top_k(
+        union,
+        top_k=cfg.retrieval_final_top_k * 2,
+        max_per_document=cfg.retrieval_max_hits_per_document,
+    )
+    step["diverse_count"] = len(diverse)
     rerank_usage: dict[str, str] = {}
     reranked = rerank_hits(
         query,
-        union,
+        diverse,
         top_k=cfg.retrieval_final_top_k,
         enabled=core.reranker_enabled,
         backend=core.reranker_backend,
@@ -209,6 +274,7 @@ async def multi_retrieve_for_section(
     settings: ReviewSettings | None = None,
     classification: SectionCategoryResult | None = None,
     scope_document_ids: list[str] | None = None,
+    contract_routing: dict[str, Any] | None = None,
 ) -> SectionRetrievalBundle:
     """Dense + FTS + metadata retrieval with retry ladder and category filtering."""
     cfg = settings or get_settings()
@@ -232,6 +298,7 @@ async def multi_retrieve_for_section(
             classification,
             section,
             attempt_index,
+            contract_routing=contract_routing,
         )
         use_category_filter = wants_category_filter and cfg.retrieval_category_hard_filter
         if cfg.retrieval_skip_hard_filter_for_general and _is_general_only(

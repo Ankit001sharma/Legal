@@ -22,7 +22,7 @@ async def test_search_policy_by_categories_payload_shape() -> None:
             return {"results": []}
 
     class _FakeHttp:
-        async def post(self, url: str, json: dict) -> _FakeResponse:
+        async def request(self, method: str, url: str, json: dict | None = None, **kwargs) -> _FakeResponse:
             captured.append({"url": url, "json": json})
             return _FakeResponse()
 
@@ -56,7 +56,7 @@ async def test_search_policy_by_categories_merges_existing_metadata() -> None:
             return {"results": []}
 
     class _FakeHttp:
-        async def post(self, url: str, json: dict) -> _FakeResponse:
+        async def request(self, method: str, url: str, json: dict | None = None, **kwargs) -> _FakeResponse:
             captured.append(json)
             return _FakeResponse()
 

@@ -8,17 +8,19 @@ from document_core.schemas.chunk import ChunkRole, DocumentKind, IndexedChunk, R
 from review_agent.config import ReviewSettings
 from review_agent.schemas.section_classify import SectionCategoryResult
 from review_agent.services.multi_retrieval import (
+    _diverse_top_k,
+    _normalize_path_scores,
     _query_for_attempt,
     _union_hits,
     multi_retrieve_for_section,
 )
 
 
-def _hit(text: str, chunk_id: str, score: float) -> RetrievalHit:
-    doc_id = uuid4()
+def _hit(text: str, chunk_id: str, score: float, *, doc_id=None) -> RetrievalHit:
+    document_id = doc_id or uuid4()
     chunk = IndexedChunk(
         chunk_id=chunk_id,
-        document_id=doc_id,
+        document_id=document_id,
         tenant_id="demo",
         kind=DocumentKind.POLICY,
         chunk_role=ChunkRole.PARENT,
@@ -241,3 +243,56 @@ async def test_retrieval_general_skips_hard_filter():
     assert category_filter_calls == []
     assert len(bundle.policy_hits) == 1
     assert bundle.retrieval_meta["attempts"][0]["category_hard_filter"] is False
+
+
+def test_normalize_path_scores_fts_wins_union():
+    """T1: After normalization, a dominant FTS hit should beat uniformly weak dense hits."""
+    # Dense path: two hits close together at ~0.3 (uniformly weak)
+    dense = [_hit("alpha", "d1", 0.30), _hit("beta", "d2", 0.32)]
+    # FTS path: one strong hit and one weak — the strong one should normalize to 1.0
+    fts = [_hit("gamma fts winner", "f1", 0.55), _hit("delta", "f2", 0.10)]
+
+    # Without normalization, dense d2 (0.32) < fts f1 (0.55) but dense d1 (0.30) > fts f2 (0.10).
+    # After normalization:
+    #   dense: d1→0.0, d2→1.0 | fts: f2→0.0, f1→1.0
+    # Union should keep all 4 (different chunk_ids), ranked by normalized score.
+    paths: dict[str, int] = {}
+    normed_dense = _normalize_path_scores(dense)
+    normed_fts = _normalize_path_scores(fts)
+    union = _union_hits(normed_dense, normed_fts, paths=paths)
+
+    assert paths["union_count"] == 4
+    # Both d2 and f1 should be at 1.0 (top), beating d1 and f2 at 0.0
+    top_ids = {h.parent_chunk.chunk_id for h in union[:2]}
+    assert "d2" in top_ids  # dense best → normalized to 1.0
+    assert "f1" in top_ids  # FTS best → normalized to 1.0
+
+
+def test_normalize_single_hit_unchanged():
+    """Single-hit path returns unchanged (no normalization range)."""
+    original = _hit("solo", "s1", 0.42)
+    result = _normalize_path_scores([original])
+    assert len(result) == 1
+    assert result[0].score == 0.42
+
+
+def test_diverse_top_k_caps_per_document():
+    """T2: 5 sections from same document → at most 3 enter output."""
+    shared_doc = uuid4()
+    other_doc = uuid4()
+    hits = [
+        _hit("sec1", "p1", 0.95, doc_id=shared_doc),
+        _hit("sec2", "p2", 0.90, doc_id=shared_doc),
+        _hit("sec3", "p3", 0.85, doc_id=shared_doc),
+        _hit("sec4", "p4", 0.80, doc_id=shared_doc),
+        _hit("sec5", "p5", 0.75, doc_id=shared_doc),
+        _hit("other", "o1", 0.50, doc_id=other_doc),
+    ]
+    result = _diverse_top_k(hits, top_k=10, max_per_document=3)
+    # At most 3 from shared_doc
+    shared_count = sum(1 for h in result if str(h.parent_chunk.document_id) == str(shared_doc))
+    assert shared_count == 3
+    # The other doc's hit should also be present
+    other_count = sum(1 for h in result if str(h.parent_chunk.document_id) == str(other_doc))
+    assert other_count == 1
+    assert len(result) == 4

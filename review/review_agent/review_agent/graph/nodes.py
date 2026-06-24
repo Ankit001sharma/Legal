@@ -13,10 +13,12 @@ from document_core.schemas.chunk import (
     ListSectionsRequest,
     StructureConfidence,
 )
+from document_core.schemas.registry import RegisterContractRequest
+from document_core.services.registry import stable_contract_document_id
 from document_core.schemas.compliance import ComplianceStatus, ReviewReport
 from review_agent.clients.document_client import DocumentMCPClient
-from review_agent.clients.policy_catalog import get_policy_catalog, index_fetched_policy
 from review_agent.config import get_settings
+from review_agent.models.llm_gateway import get_llm_limiter_stats
 from review_agent.reports.generator import render_markdown_report
 from review_agent.reports.summary_llm import maybe_llm_summary_paragraph
 from review_agent.services.finding_enrich import (
@@ -31,97 +33,99 @@ from review_agent.services.section_gap_status import gap_status_summary
 from review_agent.state.review_state import ReviewState
 
 
+async def _ingest_contract_from_text(
+    state: ReviewState,
+    client: DocumentMCPClient,
+    contract_text: str,
+) -> UUID:
+    tenant_id = state["tenant_id"]
+    thread_id = str(state.get("thread_id") or "inline")
+    contract_ref = f"query-review-{thread_id}"
+    document_id = stable_contract_document_id(tenant_id, contract_ref)
+    title = str(state.get("contract_title") or "Contract").strip() or "Contract"
+    contract_type = state.get("contract_type")
+
+    await client.register_contract(
+        RegisterContractRequest(
+            tenant_id=tenant_id,
+            contract_ref=contract_ref,
+            title=title,
+            document_id=document_id,
+            contract_type=contract_type,
+        )
+    )
+    await client.ingest_document(
+        IngestRequest(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            title=title,
+            kind=DocumentKind.CONTRACT,
+            text=contract_text,
+            metadata={
+                "contract_ref": contract_ref,
+                "contract_type": contract_type,
+                "source": "inline_contract_text",
+            },
+        )
+    )
+    return document_id
+
+
 async def contract_parser_node(state: ReviewState, client: DocumentMCPClient) -> dict[str, Any]:
     doc_id_raw = state.get("contract_document_id")
-    if doc_id_raw:
-        document_id = UUID(str(doc_id_raw))
-        sections = await client.list_sections(
-            ListSectionsRequest(
-                tenant_id=state["tenant_id"],
-                document_id=document_id,
-                kind=DocumentKind.CONTRACT,
-            )
-        )
-        if not sections:
-            raise ValueError(f"contract document not indexed: {document_id}")
+    contract_text = str(state.get("contract_text") or "").strip()
+    load_warnings: list[str] = []
 
-        title = (
-            state.get("contract_title")
-            or str(sections[0].metadata.get("document_title") or "").strip()
-            or "Contract"
-        )
-        ingest_result = IngestResult(
-            document_id=document_id,
+    if not doc_id_raw and contract_text:
+        document_id = await _ingest_contract_from_text(state, client, contract_text)
+        doc_id_raw = str(document_id)
+        load_warnings.append("ingested contract from contract_text before review")
+
+    if not doc_id_raw:
+        raise ValueError("contract_document_id or contract_text is required")
+
+    document_id = UUID(str(doc_id_raw))
+    sections = await client.list_sections(
+        ListSectionsRequest(
             tenant_id=state["tenant_id"],
+            document_id=document_id,
             kind=DocumentKind.CONTRACT,
-            title=title,
-            parent_count=len(sections),
-            child_count=0,
-            structure_confidence=StructureConfidence.HIGH,
-            warnings=["loaded existing contract by document_id; skipped re-ingest"],
         )
-        return {
-            "ingest_result": ingest_result,
-            "contract_sections": sections,
-            "warnings": list(ingest_result.warnings),
-        }
-
-    contract_text = (state.get("contract_text") or "").strip()
-    if not contract_text:
-        raise ValueError("contract_text required when contract_document_id is not set")
-
-    request = IngestRequest(
-        tenant_id=state["tenant_id"],
-        title=state.get("contract_title") or "Contract",
-        kind=DocumentKind.CONTRACT,
-        text=contract_text,
     )
-    ingest_result = await client.ingest_document(request)
-    warnings = list(ingest_result.warnings)
-    if ingest_result.structure_confidence.value != "high":
-        warnings.append(
-            f"contract structure confidence is {ingest_result.structure_confidence.value}; "
-            "section boundaries may affect review accuracy."
-        )
+    if not sections:
+        raise ValueError(f"contract document not indexed: {document_id}")
+
+    title = (
+        state.get("contract_title")
+        or str(sections[0].metadata.get("document_title") or "").strip()
+        or "Contract"
+    )
+    ingest_result = IngestResult(
+        document_id=document_id,
+        tenant_id=state["tenant_id"],
+        kind=DocumentKind.CONTRACT,
+        title=title,
+        parent_count=len(sections),
+        child_count=0,
+        structure_confidence=StructureConfidence.HIGH,
+        warnings=(
+            ["loaded existing contract by document_id"]
+            if not load_warnings
+            else load_warnings
+        ),
+    )
     return {
+        "contract_document_id": str(document_id),
         "ingest_result": ingest_result,
-        "warnings": warnings,
+        "contract_sections": sections,
+        "warnings": list(ingest_result.warnings),
     }
 
 
 async def index_policies_node(state: ReviewState, client: DocumentMCPClient) -> dict[str, Any]:
-    settings = get_settings()
     warnings: list[str] = []
     indexed_policies: list[dict[str, Any]] = list(state.get("indexed_policies") or [])
     indexed_ids = {str(entry.get("document_id")) for entry in indexed_policies if entry.get("document_id")}
-    fetched_refs: set[str] = set(state.get("fetched_policy_refs") or [])
-    ref_by_doc: dict[str, str] = dict(state.get("policy_ref_by_document_id") or {})
-
-    catalog = get_policy_catalog(
-        catalog_url=settings.policy_catalog_url,
-        fetch_enabled=settings.policy_fetch_enabled,
-    )
-
-    for ref in state.get("policy_refs") or []:
-        if ref in fetched_refs:
-            continue
-        if catalog is None:
-            warnings.append(f"policy_ref {ref!r} skipped: no catalog configured")
-            continue
-        document = await catalog.fetch_policy(state["tenant_id"], ref)
-        if document is None:
-            warnings.append(f"policy_ref {ref!r} not found in catalog")
-            continue
-        _result, entry = await index_fetched_policy(
-            client,
-            tenant_id=state["tenant_id"],
-            document=document,
-            policy_ref=ref,
-            default_policy_type=state.get("policy_type"),
-        )
-        indexed_policies.append(entry)
-        fetched_refs.add(ref)
-        ref_by_doc[entry["document_id"]] = ref
 
     for entry in state.get("discovered_policies") or []:
         doc_id = str(entry.get("document_id") or "")
@@ -136,61 +140,23 @@ async def index_policies_node(state: ReviewState, client: DocumentMCPClient) -> 
                 )
             )
         except (ValueError, TypeError):
-            warnings.append(f"discovered policy {doc_id!r} has invalid document_id")
+            warnings.append(f"scoped policy {doc_id!r} has invalid document_id")
             continue
         if not sections:
-            warnings.append(f"discovered policy {doc_id!r} not found in document store")
+            warnings.append(f"scoped policy {doc_id!r} not found in document store")
             continue
         indexed_policies.append(
             {
                 "document_id": doc_id,
                 "title": entry.get("title") or sections[0].metadata.get("document_title") or sections[0].title or "Policy",
                 "policy_type": entry.get("policy_type"),
-                "applies_to_contract_types": list(entry.get("applies_to_contract_types") or []),
             }
         )
         indexed_ids.add(doc_id)
 
-    for idx, policy in enumerate(state.get("policy_texts") or []):
-        title = policy.get("title") or f"Policy {idx + 1}"
-        text = policy.get("text", "").strip()
-        if not text:
-            warnings.append(f"skipped empty policy: {title}")
-            continue
-
-        applies = policy.get("applies_to_contract_types") or (
-            [state["contract_type"]] if state.get("contract_type") else []
-        )
-        categories = list(policy.get("categories") or [])
-        result = await client.index_policy(
-            IngestRequest(
-                tenant_id=state["tenant_id"],
-                title=title,
-                kind=DocumentKind.POLICY,
-                text=text,
-                policy_type=policy.get("policy_type") or state.get("policy_type"),
-                applies_to_contract_types=applies,
-                categories=categories,
-            )
-        )
-        indexed_policies.append(
-            {
-                "document_id": str(result.document_id),
-                "title": title,
-                "policy_type": policy.get("policy_type") or state.get("policy_type"),
-                "applies_to_contract_types": list(applies),
-            }
-        )
-        if not categories:
-            warnings.append(
-                f"inline policy {title!r} has no categories; metadata retrieval may be weaker."
-            )
-
     return {
         "warnings": warnings,
         "indexed_policies": indexed_policies,
-        "fetched_policy_refs": sorted(fetched_refs),
-        "policy_ref_by_document_id": ref_by_doc,
     }
 
 
@@ -367,6 +333,7 @@ async def report_node(state: ReviewState, client: DocumentMCPClient) -> dict[str
     ingest = state["ingest_result"]
     findings = state.get("grounded_findings") or []
     stats = dict(state.get("compliance_stats") or {})
+    stats["llm_rate_limit_events"] = get_llm_limiter_stats()["rate_limit_events"]
     stats["policy_conflict_count"] = sum(
         1 for f in findings if f.status == ComplianceStatus.POLICY_CONFLICT
     )
@@ -389,9 +356,8 @@ async def report_node(state: ReviewState, client: DocumentMCPClient) -> dict[str
         metadata={
             "thread_id": state.get("thread_id"),
             "memory_hits": len(state.get("memory_hits") or []),
-            "review_policy_source": "tenant_auto",
+            "review_policy_source": "request",
             "contract_document_id": str(ingest.document_id),
-            "fetched_policy_refs": list(state.get("fetched_policy_refs") or []),
             "compliance_stats": stats,
             "section_retrieval_count": len(state.get("section_retrieval_by_id") or {}),
             "section_compare_count": len(state.get("section_compare_items") or []),

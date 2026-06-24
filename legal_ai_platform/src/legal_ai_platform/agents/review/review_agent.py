@@ -14,7 +14,7 @@ from review_agent.services.review_preflight import ReviewPreflightError
 
 
 class ReviewAgent(BaseAgent):
-    """Text-only contract compliance review against uploaded policy text."""
+    """Contract compliance review against pre-indexed policies in document-mcp."""
 
     agent_type = "review"
 
@@ -29,11 +29,12 @@ class ReviewAgent(BaseAgent):
         self._retrieval_client = retrieval_client
 
     async def execute(self, request: AgentRequest) -> AgentResponse:
-        """Run review using contract_text + policies from the unified request envelope."""
+        """Run review — contract_text or contract_document_id; policies from tenant index by default."""
         context = request.effective_context()
         contract_document_id = request.contract_document_id or context.get("contract_document_id")
-        contract_text = (context.get("contract_text") or request.query or "").strip()
-        policies = context.get("policies") or []
+        contract_text = request.contract_text or context.get("contract_text")
+        policy_document_ids = request.policy_document_ids or context.get("policy_document_ids")
+        policy_source = request.policy_source or context.get("policy_source") or "indexed"
         session_block = context.get("session") or {}
         memory_snippets = session_block.get("memory_snippets") or ""
         platform_owns_memory = bool(session_block.get("platform_owns_long_term_memory"))
@@ -41,19 +42,35 @@ class ReviewAgent(BaseAgent):
             None if platform_owns_memory else self._retrieval_client
         )
 
+        if not contract_document_id and not (contract_text or "").strip():
+            return AgentResponse(
+                agent=self.agent_type,
+                task_type="review",
+                success=False,
+                error="contract_text or contract_document_id is required",
+                thread_id=request.thread_id,
+            )
+        if policy_source == "session" and not policy_document_ids:
+            return AgentResponse(
+                agent=self.agent_type,
+                task_type="review",
+                success=False,
+                error="policy_document_ids is required when policy_source=session",
+                thread_id=request.thread_id,
+            )
+
         started = time.perf_counter()
         try:
             result = await run_review(
                 client=self._document_client,  # type: ignore[arg-type]
                 tenant_id=request.tenant_id or "default",
-                contract_text=str(contract_text),
-                contract_document_id=(
-                    str(contract_document_id) if contract_document_id else None
-                ),
+                contract_document_id=str(contract_document_id) if contract_document_id else None,
+                contract_text=str(contract_text).strip() if contract_text else None,
                 contract_title=context.get("contract_title", "Contract"),
-                policy_texts=policies,
-                policy_document_ids=context.get("policy_document_ids"),
-                policy_refs=context.get("policy_refs"),
+                policy_document_ids=[str(doc_id) for doc_id in policy_document_ids]
+                if policy_document_ids
+                else None,
+                policy_scope="request" if policy_source == "session" else "indexed",
                 contract_type=context.get("contract_type"),
                 policy_type=context.get("policy_type"),
                 memory_client=memory_client,
@@ -80,6 +97,8 @@ class ReviewAgent(BaseAgent):
                     "audit": report.metadata.get("artifact"),
                     "memory_saved": result.get("memory_saved", False),
                     "memory_context": result.get("memory_context", ""),
+                    "contract_document_id": str(contract_document_id),
+                    "policy_document_ids": [str(doc_id) for doc_id in policy_document_ids],
                 },
                 success=True,
                 thread_id=result.get("thread_id") or request.thread_id,

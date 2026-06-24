@@ -13,6 +13,8 @@ from document_core.store.pgvector_store import PgVectorDocumentStore
 
 # CI-stable defaults: avoid loading cross-encoder models in unit tests.
 os.environ.setdefault("RERANKER_BACKEND", "lexical")
+os.environ.setdefault("CATEGORY_TAGGER_MODE", "keyword")
+os.environ.setdefault("SEARCH_BACKEND", "lexical")
 
 
 def pytest_configure(config):

@@ -30,8 +30,8 @@ def test_review_from_context():
         classifier.classify(
             "",
             context={
-                "contract_text": "Liability cap is 12 months.",
-                "policies": [{"title": "P", "text": "Cap must be 12 months."}],
+                "contract_document_id": "00000000-0000-4000-8000-000000000001",
+                "policy_document_ids": ["00000000-0000-4000-8000-000000000002"],
             },
         )
         == "review"

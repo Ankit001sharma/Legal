@@ -105,6 +105,8 @@ def _render_ops_block(artifact: ReviewArtifact) -> list[str]:
         f"| Retrieval retries (sections) | {ops.retrieval_retry_sections} |",
         f"| Max retrieval attempts used | {ops.retrieval_max_attempts_used} |",
         f"| Zero-hit sections | {ops.retrieval_zero_hit_sections} |",
+        f"| Degraded sections | {ops.degraded_section_count} |",
+        f"| Zero-hit section IDs | {', '.join(ops.retrieval_zero_hit_section_ids) or '—'} |",
         f"| Compare LLM batches failed | {ops.llm_batches_failed} |",
         f"| Gap LLM sections | {ops.gap_llm_sections} |",
         f"| Superseded findings | {ops.superseded_count} |",

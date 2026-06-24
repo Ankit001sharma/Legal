@@ -1,0 +1,25 @@
+{
+  "tenant_id": "acme-nda-clean",
+  "policy_ref": "enterprise-google-cloud-liability",
+  "title": "LIMITATION ON AMOUNT OF LIABILITY \u2014 GOOGLE CLOUD",
+  "policy_type": "nda",
+  "categories": [
+    "liability"
+  ],
+  "metadata": {
+    "source": "public-web",
+    "source_company": "Google LLC",
+    "source_document": "Google Cloud Platform Agreement",
+    "categories": [
+      "liability"
+    ],
+    "preferred_position": "Liability cap tied to fees paid in the prior 12 months; disfavor fixed low caps for enterprise vendor deals."
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Limitation of Liability",
+      "text": "Each party's total aggregate Liability for damages arising out of or relating to this Agreement in connection with the GCP Services, GWS Services, SecOps Services, Looker (original) Services, or Cloud Identity Services, as applicable, is limited to the Fees Customer paid for such Services during the 12 month period before the event giving rise to Liability, except Google's total aggregate Liability for damages arising out of or related to Services or Software provided free of charge is limited to $5,000."
+    }
+  ]
+}

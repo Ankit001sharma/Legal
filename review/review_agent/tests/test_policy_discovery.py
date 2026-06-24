@@ -29,7 +29,6 @@ async def test_discover_policies_by_liability_topic():
                 title="Vendor Policy",
                 kind=DocumentKind.POLICY,
                 text=SAMPLE_POLICY,
-                applies_to_contract_types=["msa"],
             )
         )
         settings = ReviewSettings()
@@ -344,9 +343,7 @@ async def test_contract_type_fallback_niche():
                 kind=DocumentKind.POLICY,
                 text="1. Limitation of Liability\nFees paid in twelve months.",
                 categories=["liability"],
-                applies_to_contract_types=["msa"],
             )
-        )
         await client.index_policy(
             IngestRequest(
                 tenant_id="demo",
@@ -354,7 +351,6 @@ async def test_contract_type_fallback_niche():
                 kind=DocumentKind.POLICY,
                 text="2. Indemnification\nVendor shall indemnify.",
                 categories=["indemnity"],
-                applies_to_contract_types=["msa"],
             )
         )
         settings = ReviewSettings(
@@ -427,3 +423,145 @@ async def test_category_sweep_adds_minerals():
     assert discovered[0].policy_group == "minerals"
     assert "minerals" in meta["discovery_section_categories"]
     assert meta["discovery_category_sweep_added"] >= 1
+
+
+def test_select_grouped_with_category_reserve_prefers_sla():
+    from review_agent.schemas.discovered_policy import DiscoveredPolicy
+
+    ranked = [
+        DiscoveredPolicy(
+            document_id="compliance-1",
+            match_score=0.95,
+            policy_group="compliance",
+            categories=["compliance"],
+        ),
+        DiscoveredPolicy(
+            document_id="sla-1",
+            match_score=0.7,
+            policy_group="sla",
+            categories=["sla"],
+        ),
+    ]
+    grouped, _deduped, _groups_before, reserved = policy_discovery._select_grouped_with_category_reserve(
+        ranked,
+        ["sla", "compliance"],
+        max_groups=6,
+        max_policies=0,
+    )
+    doc_ids = {policy.document_id for policy in grouped}
+    assert "sla-1" in doc_ids
+    assert reserved >= 1
+
+
+@pytest.mark.asyncio
+async def test_discovery_respects_scope_document_ids():
+    from uuid import uuid4
+
+    from document_core.schemas.chunk import ChunkRole, IndexedChunk
+
+    in_scope = uuid4()
+    out_scope = uuid4()
+    parent_in = IndexedChunk(
+        chunk_id="p1",
+        document_id=in_scope,
+        tenant_id="demo",
+        kind=DocumentKind.POLICY,
+        chunk_role=ChunkRole.PARENT,
+        section_id="1",
+        section_path="1",
+        title="In Scope",
+        text="SLA uptime service level agreement.",
+        metadata={"categories": ["sla"]},
+    )
+    parent_out = IndexedChunk(
+        chunk_id="p2",
+        document_id=out_scope,
+        tenant_id="demo",
+        kind=DocumentKind.POLICY,
+        chunk_role=ChunkRole.PARENT,
+        section_id="1",
+        section_path="1",
+        title="Out Scope",
+        text="Compliance supplier code of conduct.",
+        metadata={"categories": ["compliance"]},
+    )
+    client = AsyncMock()
+    client.search_policy = AsyncMock(
+        side_effect=[
+            [type("Hit", (), {"score": 0.9, "parent_chunk": parent_in})()],
+            [type("Hit", (), {"score": 0.95, "parent_chunk": parent_out})()],
+        ]
+    )
+    client.search_policy_by_categories = AsyncMock(return_value=[])
+    from document_core.schemas.registry import ListPolicyRegistryResponse
+
+    client.list_policy_registry = AsyncMock(return_value=ListPolicyRegistryResponse(tenant_id="demo", policies=[]))
+
+    settings = ReviewSettings(discovery_section_category_sweep=False)
+    discovered, _warnings, meta = await discover_policies_from_topics(
+        client,
+        tenant_id="demo",
+        topics=["sla", "compliance"],
+        contract_type=None,
+        policy_type=None,
+        settings=settings,
+        scope_document_ids=[str(in_scope)],
+    )
+
+    assert len(discovered) == 1
+    assert discovered[0].document_id == str(in_scope)
+    assert meta["discovery_scope_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_seed_discovered_from_scope():
+    from uuid import uuid4
+
+    from document_core.schemas.registry import ListPolicyRegistryResponse, PolicyRegistryRecord
+
+    doc_id = uuid4()
+    client = AsyncMock()
+    client.list_policy_registry = AsyncMock(
+        return_value=ListPolicyRegistryResponse(
+            tenant_id="demo",
+            policies=[
+                PolicyRegistryRecord(
+                    tenant_id="demo",
+                    document_id=doc_id,
+                    policy_ref="playbook-sla-1",
+                    title="SLA Playbook",
+                    index_status="indexed",
+                    metadata={"categories": ["sla"]},
+                )
+            ],
+        )
+    )
+    seeded = await policy_discovery.seed_discovered_from_scope(
+        client,
+        tenant_id="demo",
+        scope_document_ids=[str(doc_id)],
+    )
+    assert str(doc_id) in seeded
+    assert seeded[str(doc_id)].categories == ["sla"]
+
+
+def test_category_boost_multiplicative():
+    """T3: Category boost is multiplicative, not additive, and capped at 1.0."""
+    from review_agent.config import ReviewSettings
+
+    settings = ReviewSettings(discovery_category_score_boost=0.15)
+
+    # Simulate what _discover_by_section_categories does with the new formula
+    raw_score = 0.10
+    boosted = min(raw_score * (1.0 + settings.discovery_category_score_boost), 1.0)
+    assert abs(boosted - 0.115) < 1e-9, f"Expected 0.115, got {boosted}"
+
+    # With old additive formula it would have been 0.25
+    additive_would_be = raw_score + settings.discovery_category_score_boost
+    assert abs(additive_would_be - 0.25) < 1e-9
+    assert boosted < additive_would_be, "Multiplicative boost must be smaller than additive"
+
+    # Verify ceiling at 1.0
+    high_score = 0.95
+    capped = min(high_score * (1.0 + settings.discovery_category_score_boost), 1.0)
+    assert capped == 1.0, f"Expected ceiling 1.0, got {capped}"

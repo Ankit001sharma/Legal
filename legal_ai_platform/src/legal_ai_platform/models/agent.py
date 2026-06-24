@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -15,15 +15,15 @@ class PolicyInput(BaseModel):
     title: str = "Policy"
     text: str = Field(..., min_length=1)
     policy_type: str | None = None
-    applies_to_contract_types: list[str] = Field(default_factory=list)
 
 
 class AgentRequest(BaseModel):
     """Generic task envelope sent to any agent via the orchestrator.
 
     All clients use ``POST /query`` on the platform gateway. For contract review,
-    set ``task_type`` to ``review`` (or rely on classifier) and supply
-    ``contract_text`` + ``policies`` (top-level or inside ``context``).
+    set ``task_type`` to ``review`` and supply ``contract_text`` (raw PDF extract)
+    or ``contract_document_id``. Policies are discovered from the tenant index
+    unless ``policy_source=session`` and ``policy_document_ids`` are provided.
     """
 
     query: str = ""
@@ -57,7 +57,10 @@ class AgentRequest(BaseModel):
     contract_type: str | None = None
     policy_type: str | None = None
     policy_document_ids: list[str] | None = None
-    policy_refs: list[str] | None = None
+    policy_source: Literal["indexed", "session"] = Field(
+        default="indexed",
+        description="indexed=tenant-wide discovery; session=request-scoped policy_document_ids",
+    )
 
     @field_validator("policies", mode="before")
     @classmethod
@@ -87,8 +90,8 @@ class AgentRequest(BaseModel):
             merged["policy_type"] = self.policy_type
         if self.policy_document_ids is not None:
             merged["policy_document_ids"] = self.policy_document_ids
-        if self.policy_refs is not None:
-            merged["policy_refs"] = self.policy_refs
+        if self.policy_source != "indexed":
+            merged["policy_source"] = self.policy_source
         return merged
 
 

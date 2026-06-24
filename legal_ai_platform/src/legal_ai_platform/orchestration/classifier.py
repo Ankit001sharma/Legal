@@ -17,7 +17,7 @@ class TaskClassifier:
 
     Review routing triggers when:
       - ``task_type`` is review / contract / compliance
-      - ``context`` (or top-level review fields) includes contract_text + policies
+      - ``context`` includes contract_document_id + policy_document_ids
       - Query matches review intent patterns
 
     Structured for future LLM-based classification without changing the orchestrator.
@@ -55,8 +55,14 @@ class TaskClassifier:
             return self.normalize_task_type(explicit_task_type)
 
         ctx = context or {}
-        if ctx.get("contract_text") and ctx.get("policies"):
+        if ctx.get("contract_document_id") and ctx.get("policy_document_ids"):
             return "review"
+
+        has_contract = bool(ctx.get("contract_text") or ctx.get("contract_document_id"))
+        if has_contract:
+            for task_type, pattern in self._RULES:
+                if task_type == "review" and pattern.search(query):
+                    return "review"
 
         for task_type, pattern in self._RULES:
             if pattern.search(query):

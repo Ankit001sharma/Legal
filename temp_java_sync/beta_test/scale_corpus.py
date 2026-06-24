@@ -17,7 +17,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Enterprise Supplier Code of Conduct (RBA Silver)",
         "policy_type": "vendor",
         "categories": ["compliance"],
-        "applies_to_contract_types": ["vendor", "msa", "supply"],
         "text": "Suppliers must achieve RBA Silver recognition (160/200 points, no priority findings) at all manufacturing sites. Corporate-level SAQs are required annually. Facility audits must be completed within 60 days when selected.",
     },
     {
@@ -25,7 +24,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Anti-Bribery & Export Controls Playbook",
         "policy_type": "vendor",
         "categories": ["compliance"],
-        "applies_to_contract_types": ["vendor", "msa"],
         "text": "Suppliers shall maintain an anti-bribery program consistent with FCPA and UK Bribery Act. No facilitation payments. Export-controlled items require end-user certificates before shipment.",
     },
     {
@@ -33,7 +31,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Sanctions & Denied Party Screening Standard",
         "policy_type": "vendor",
         "categories": ["compliance"],
-        "applies_to_contract_types": ["vendor", "msa", "distribution"],
         "text": "Screen all parties against OFAC, EU, and UN sanctions lists prior to onboarding and quarterly thereafter. Block transactions with embargoed countries without Legal approval.",
     },
     {
@@ -41,7 +38,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Global Human Rights — Forced Labor Prohibition",
         "policy_type": "vendor",
         "categories": ["human_rights", "labor"],
-        "applies_to_contract_types": ["vendor", "msa"],
         "text": "Forced labor in any form is prohibited including bonded labor, prison labor, and trafficking. Recruitment fees must not be charged to workers. OECD-aligned due diligence is mandatory for Tier-1 suppliers.",
     },
     {
@@ -49,7 +45,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Freedom of Association & Collective Bargaining",
         "policy_type": "vendor",
         "categories": ["human_rights", "labor"],
-        "applies_to_contract_types": ["vendor"],
         "text": "Suppliers must respect freedom of association and collective bargaining where lawful. Retaliation against worker representatives is prohibited.",
     },
     {
@@ -57,7 +52,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Responsible Minerals — RMAP Conformant Sourcing",
         "policy_type": "vendor",
         "categories": ["minerals", "compliance"],
-        "applies_to_contract_types": ["vendor", "oem"],
         "text": "Submit Minerals Reporting Templates documenting 3TG smelters. Source only from RMAP-conformant or cross-recognized smelters. Remove high-risk smelters within 90 days of notification.",
     },
     {
@@ -65,7 +59,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Conflict Minerals CMRT Reporting Standard",
         "policy_type": "vendor",
         "categories": ["minerals"],
-        "applies_to_contract_types": ["vendor"],
         "text": "Annual CMRT submission required by March 31. Smelter lists must be validated against RMI database.",
     },
     {
@@ -73,7 +66,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "GHG & CDP Reporting — Supply Chain",
         "policy_type": "vendor",
         "categories": ["environment", "sustainability"],
-        "applies_to_contract_types": ["vendor", "msa"],
         "text": "Report Scope 1, 2, and material Scope 3 GHG to CDP annually. Public absolute reduction target required. Third-party verification of emissions inventory mandatory.",
     },
     {
@@ -81,7 +73,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Environmental Compliance & Waste Management",
         "policy_type": "vendor",
         "categories": ["environment"],
-        "applies_to_contract_types": ["vendor"],
         "text": "Hazardous waste manifests retained 7 years. RoHS and REACH compliance certificates required for hardware components.",
     },
     {
@@ -89,7 +80,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Master Security Specification (MSS) — Tier 1",
         "policy_type": "vendor",
         "categories": ["security", "vendor_security"],
-        "applies_to_contract_types": ["vendor", "saas", "cloud"],
         "text": "Conform to MSS controls: encryption at rest AES-256, MFA for admin access, annual penetration testing, 72-hour breach notification to Buyer security team.",
     },
     {
@@ -97,7 +87,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Supply Chain Visibility & Business Continuity",
         "policy_type": "vendor",
         "categories": ["security", "procurement"],
-        "applies_to_contract_types": ["vendor", "logistics"],
         "text": "Register all manufacturing sites in SCV portal. Quarterly SCV surveys mandatory. BCP self-assessment annually with RTO ≤ 24 hours for critical components.",
     },
     {
@@ -105,7 +94,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Vendor Security Assessment (VSA) Standard",
         "policy_type": "vendor",
         "categories": ["vendor_security"],
-        "applies_to_contract_types": ["vendor", "saas"],
         "text": "Complete VSA questionnaire before production access. SOC 2 Type II report required for SaaS vendors handling Buyer data.",
     },
     {
@@ -113,7 +101,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "MSA Liability Cap — 12-Month Fees Standard",
         "policy_type": "msa",
         "categories": ["liability"],
-        "applies_to_contract_types": ["msa", "vendor", "saas"],
         "text": "Total aggregate liability capped at fees paid in the twelve (12) months preceding the claim. Carve-outs only for confidentiality breach, IP infringement, and gross negligence.",
     },
     {
@@ -121,7 +108,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Liability Super-Cap — Confidentiality & Data Breach",
         "policy_type": "msa",
         "categories": ["liability"],
-        "applies_to_contract_types": ["msa", "nda", "dpa"],
         "text": "Confidentiality and data breach liability may exceed standard cap up to two times (2x) annual fees or five million dollars ($5M), whichever is greater.",
     },
     {
@@ -129,7 +115,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Consequential Damages Mutual Waiver",
         "policy_type": "msa",
         "categories": ["liability"],
-        "applies_to_contract_types": ["msa", "saas"],
         "text": "Neither party liable for indirect, incidental, special, or consequential damages including lost profits, except for breaches of confidentiality or IP indemnity obligations.",
     },
     {
@@ -137,7 +122,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "IP Infringement Indemnification Standard",
         "policy_type": "msa",
         "categories": ["indemnity", "ip"],
-        "applies_to_contract_types": ["msa", "saas", "software"],
         "text": "Vendor indemnifies Customer against third-party IP infringement claims arising from deliverables. Vendor must defend at its expense and obtain necessary licenses.",
     },
     {
@@ -145,7 +129,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Data Breach Indemnification Playbook",
         "policy_type": "msa",
         "categories": ["indemnity", "privacy"],
-        "applies_to_contract_types": ["saas", "dpa", "cloud"],
         "text": "Processor indemnifies Controller for regulatory fines and notification costs arising from Processor's failure to implement required security controls.",
     },
     {
@@ -153,7 +136,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Gross Negligence & Willful Misconduct Indemnity",
         "policy_type": "vendor",
         "categories": ["indemnity"],
-        "applies_to_contract_types": ["vendor", "msa"],
         "text": "Indemnification obligations are uncapped for gross negligence, willful misconduct, and violations of applicable law.",
     },
     {
@@ -161,7 +143,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Mutual Confidentiality — Enterprise Standard",
         "policy_type": "nda",
         "categories": ["confidentiality"],
-        "applies_to_contract_types": ["nda", "msa", "vendor"],
         "text": "Confidential Information protected with at least reasonable care, no less than same degree as own confidential information. Return or destroy upon termination within 30 days.",
     },
     {
@@ -169,7 +150,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Confidentiality — Residuals & Clean Room",
         "policy_type": "nda",
         "categories": ["confidentiality"],
-        "applies_to_contract_types": ["nda", "software"],
         "text": "Residual knowledge exception prohibited for trade secrets and source code. Clean room procedures required for competitive product development.",
     },
     {
@@ -177,7 +157,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Confidentiality Survival — 5 Year Standard",
         "policy_type": "nda",
         "categories": ["confidentiality"],
-        "applies_to_contract_types": ["nda", "msa"],
         "text": "Confidentiality obligations survive termination for five (5) years; trade secrets survive indefinitely.",
     },
     {
@@ -185,7 +164,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "GDPR Data Processing Addendum Standard",
         "policy_type": "dpa",
         "categories": ["privacy", "data_retention"],
-        "applies_to_contract_types": ["dpa", "saas", "cloud"],
         "text": "Processor acts only on documented instructions. Sub-processors require prior written authorization. DPIA support and 72-hour breach notification to Controller required.",
     },
     {
@@ -193,7 +171,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "CCPA/CPRA Service Provider Terms",
         "policy_type": "dpa",
         "categories": ["privacy"],
-        "applies_to_contract_types": ["dpa", "saas"],
         "text": "Service Provider shall not sell or share personal information. Assist with consumer rights requests within 10 business days.",
     },
     {
@@ -201,7 +178,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Cross-Border Data Transfer — SCCs Module 2",
         "policy_type": "dpa",
         "categories": ["privacy"],
-        "applies_to_contract_types": ["dpa", "cloud"],
         "text": "EU personal data transfers require Standard Contractual Clauses Module 2. Transfer impact assessment documented annually.",
     },
     {
@@ -209,7 +185,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Data Retention & Deletion — 90 Day Post-Termination",
         "policy_type": "dpa",
         "categories": ["data_retention"],
-        "applies_to_contract_types": ["dpa", "saas"],
         "text": "Delete or return all personal data within 90 days of termination. Certification of deletion required.",
     },
     {
@@ -217,7 +192,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Backup Retention & Crypto-Shredding",
         "policy_type": "dpa",
         "categories": ["data_retention", "security"],
-        "applies_to_contract_types": ["dpa", "cloud"],
         "text": "Backup retention max 35 days. Crypto-shredding keys upon deletion request within 30 days.",
     },
     {
@@ -225,7 +199,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Termination for Convenience — 90 Day Notice",
         "policy_type": "msa",
         "categories": ["termination"],
-        "applies_to_contract_types": ["msa", "saas"],
         "text": "Either party may terminate for convenience upon ninety (90) days written notice. Pro-rata refund of prepaid fees required.",
     },
     {
@@ -233,7 +206,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Material Breach Cure Period — 30 Days",
         "policy_type": "msa",
         "categories": ["termination"],
-        "applies_to_contract_types": ["msa", "vendor"],
         "text": "Material breach curable within thirty (30) days of notice. Immediate termination for insolvency, sanctions violation, or data breach.",
     },
     {
@@ -241,7 +213,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Payment Terms — Net 30 with 2/10 Discount",
         "policy_type": "vendor",
         "categories": ["payment"],
-        "applies_to_contract_types": ["vendor", "msa"],
         "text": "Invoices paid net thirty (30) days. Two percent (2%) discount if paid within ten (10) days. Late interest at 1.5% per month.",
     },
     {
@@ -249,7 +220,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Payment Audit & Benchmarking Rights",
         "policy_type": "vendor",
         "categories": ["payment", "procurement"],
-        "applies_to_contract_types": ["vendor", "msa"],
         "text": "Buyer may audit pricing against benchmark indices annually. Most-favored-customer pricing for equivalent volumes.",
     },
     {
@@ -257,7 +227,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "SaaS Availability SLA — 99.9% Monthly",
         "policy_type": "saas",
         "categories": ["sla"],
-        "applies_to_contract_types": ["saas", "cloud"],
         "text": "Monthly uptime minimum 99.9%. Service credits 10% of monthly fees per 0.1% below threshold. RTO 4 hours for critical incidents.",
     },
     {
@@ -265,7 +234,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Support Response SLA — P1 within 1 Hour",
         "policy_type": "saas",
         "categories": ["sla"],
-        "applies_to_contract_types": ["saas"],
         "text": "Priority 1 incidents: response within 1 hour, resolution plan within 4 hours. 24x7 support for production outages.",
     },
     {
@@ -273,7 +241,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Work Product IP Assignment to Customer",
         "policy_type": "msa",
         "categories": ["ip"],
-        "applies_to_contract_types": ["msa", "professional_services"],
         "text": "All work product created under SOW assigned to Customer upon payment. Vendor retains pre-existing IP with license to Customer.",
     },
     {
@@ -281,7 +248,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Open Source Software Compliance",
         "policy_type": "software",
         "categories": ["ip", "compliance"],
-        "applies_to_contract_types": ["software", "saas"],
         "text": "SBOM required for all deliverables. GPL copyleft components require Legal approval. No open source in security-critical modules without review.",
     },
     {
@@ -289,7 +255,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Cyber Liability Insurance — $5M Minimum",
         "policy_type": "vendor",
         "categories": ["insurance"],
-        "applies_to_contract_types": ["vendor", "saas", "msa"],
         "text": "Maintain cyber liability insurance minimum five million dollars ($5M) per occurrence. Certificate of insurance provided annually.",
     },
     {
@@ -297,7 +262,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Commercial General Liability — $2M",
         "policy_type": "vendor",
         "categories": ["insurance"],
-        "applies_to_contract_types": ["vendor", "msa"],
         "text": "CGL minimum two million dollars ($2M) per occurrence. Buyer named as additional insured.",
     },
     {
@@ -305,7 +269,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Governing Law — Delaware, USA",
         "policy_type": "msa",
         "categories": ["governing_law"],
-        "applies_to_contract_types": ["msa", "saas", "nda"],
         "text": "Governed by Delaware law excluding conflict of laws. Exclusive jurisdiction Delaware state and federal courts.",
     },
     {
@@ -313,7 +276,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Governing Law — England & Wales",
         "policy_type": "msa",
         "categories": ["governing_law"],
-        "applies_to_contract_types": ["msa", "vendor"],
         "text": "Governed by laws of England and Wales. LCIA arbitration London seat for disputes exceeding $1M.",
     },
     {
@@ -321,7 +283,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Subcontractor Flow-Down Requirements",
         "policy_type": "vendor",
         "categories": ["procurement"],
-        "applies_to_contract_types": ["vendor", "msa"],
         "text": "All subcontractors bound by equivalent security, HR, and compliance terms. Buyer approval required for critical sub-tier suppliers.",
     },
     {
@@ -329,7 +290,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "AI/ML Usage Restrictions on Customer Data",
         "policy_type": "saas",
         "categories": ["ai_usage"],
-        "applies_to_contract_types": ["saas", "cloud"],
         "text": "Customer data shall not be used to train foundation models without explicit opt-in. AI outputs must be labeled when used in Customer-facing features.",
     },
     {
@@ -337,7 +297,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Automated Decision-Making Transparency",
         "policy_type": "saas",
         "categories": ["ai_usage", "privacy"],
-        "applies_to_contract_types": ["saas", "dpa"],
         "text": "Disclose automated decision-making under GDPR Art. 22. Human review available for adverse automated decisions.",
     },
     {
@@ -345,7 +304,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Personnel Background Screening",
         "policy_type": "vendor",
         "categories": ["hr", "employment"],
-        "applies_to_contract_types": ["vendor", "professional_services"],
         "text": "Background checks for personnel with access to Buyer systems or facilities. Re-screen upon role change to privileged access.",
     },
     {
@@ -353,7 +311,6 @@ POLICY_LIBRARY: list[dict[str, Any]] = [
         "title": "Equal Employment Opportunity Standard",
         "policy_type": "vendor",
         "categories": ["employment", "hr"],
-        "applies_to_contract_types": ["vendor"],
         "text": "Non-discrimination in hiring and employment. Affirmative action plan where required by applicable law.",
     },
 ]
@@ -504,7 +461,6 @@ def _policy_fixture(raw: dict[str, Any], *, tenant_id: str) -> dict[str, Any]:
         "policy_ref": raw["policy_ref"],
         "title": raw["title"],
         "policy_type": raw["policy_type"],
-        "applies_to_contract_types": raw["applies_to_contract_types"],
         "categories": raw["categories"],
         "metadata": {
             "source": "scale-benchmark",

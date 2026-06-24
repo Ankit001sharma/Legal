@@ -1,0 +1,52 @@
+Incident Response Plan
+Document No. MO10 | Revision Date: Jan 2, 2025 | Author: Suraj Pandey
+Approved by ISO 27001 Annex A: A.16.1.1 through A.16.1.7
+
+1. Policy Overview
+This Security Incident Response Policy is formulated in alignment with ISO 27001:2013 and is designed to establish comprehensive measures for the detection, management, and resolution of security vulnerabilities and incidents.
+
+2. Scope
+This Policy applies to all individuals who access, use, or interact with information systems managed by miniOrange, including employees, contractors, and external parties.
+
+3. Roles and Responsibilities
+The Information Security Officer and senior management team shall be responsible for implementation, maintenance, and oversight of this Policy.
+
+4. Policy
+Severity levels:
+a. Highest Severity — Level One: Service failure due to environmental threat (natural disasters, terrorist attack, power failure, fire).
+b. Medium Severity — Level Two: Service failure depending on third-party suppliers/vendors (AWS Downtime, Google Server Downtime).
+c. Low Severity — Level Three: Service unavailable due to incidents in internal network.
+
+Incident types include unauthorized loss/alteration/destruction of data, unauthorized modification to information processing facility, external attacks (phishing, DDoS, malware), and unexpected device malfunction.
+
+Incident Logging
+All incidents must be logged before executing the incident response plan. Employees must report any level of incident to top management/concerned team within 24 hours. Customers can report incidents to miniOrange anytime.
+
+5. Communication Plan
+Customers will be notified within 8 hrs of the incident or depending on the severity of the incident.
+
+6. Incident Management
+Phase 1: Immediate Action — ISMS Team assesses severity.
+Phase 2: Testing and Monitoring — document all actions post-incident.
+Phase 3: Backup Execution and Post-Incident Meeting — develop follow-up action plan.
+Phase 4: Ongoing Assessment — continuous assessment until resolved.
+
+7. Service Plan
+miniOrange relies on AWS infrastructure. Incidents in AWS environment addressed per AWS SLA. Google Workspace used for internal communication; telephonic channels as contingency.
+
+8. Generic Plan
+Incident Manager empowered to take any action necessary to resolve incident.
+
+9. Responsibilities of Incident Manager
+Ensure effective communication internally and externally. Assemble response team. Oversee post-incident report.
+
+10. Records and Reporting
+ISMS Team prepares incident report with time of impact, detection, resolution, and lessons learned.
+
+11. Review of Information Security Continuity
+Following resolution, Incident Response Plan reviewed to identify deficiencies and implement corrective actions.
+
+12. Contact
+HR Team: hr@xecurify.com
+Operations: operations@xecurify.com
+ISMS Team: info@xecurify.com

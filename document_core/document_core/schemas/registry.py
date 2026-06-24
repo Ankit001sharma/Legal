@@ -15,7 +15,6 @@ class RegisterPolicyRequest(BaseModel):
     title: str = Field(..., min_length=1)
     document_id: UUID | None = None
     policy_type: str | None = None
-    applies_to_contract_types: list[str] = Field(default_factory=list)
     source: str = "catalog"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -53,12 +52,6 @@ class ListPolicyRegistryRequest(BaseModel):
     index_status: Literal["pending", "indexed", "failed", "deleted"] | None = None
 
 
-class SyncPolicyFromCatalogRequest(BaseModel):
-    tenant_id: str
-    policy_ref: str = Field(..., min_length=1)
-    force_reindex: bool = False
-
-
 class PolicyRegistryRecord(BaseModel):
     tenant_id: str
     document_id: UUID
@@ -66,7 +59,6 @@ class PolicyRegistryRecord(BaseModel):
     title: str
     kind: Literal["contract", "policy"] = "policy"
     policy_type: str | None = None
-    applies_to_contract_types: list[str] = Field(default_factory=list)
     index_status: Literal["pending", "indexed", "failed", "deleted"]
     content_hash: str | None = None
     source: str = "catalog"

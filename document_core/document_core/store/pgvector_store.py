@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from typing import Any, Literal
@@ -12,6 +11,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from document_core.embeddings.service import embed_documents, embed_query, embeddings_available
+from document_core.store.content_hash import content_hash as compute_content_hash
 from document_core.schemas.chunk import (
     ChunkRole,
     DocumentKind,
@@ -25,12 +25,18 @@ from document_core.search.lexical import score_query
 logger = logging.getLogger(__name__)
 
 
-def _content_hash(canonical_text: str) -> str:
-    return hashlib.sha256(canonical_text.encode("utf-8")).hexdigest()
+def _document_categories(parents: list[IndexedChunk]) -> list[str]:
+    from document_core.schemas.taxonomy import normalize_categories
+
+    raw: list[str] = []
+    for parent in parents:
+        cats = (parent.metadata or {}).get("categories")
+        if isinstance(cats, list):
+            raw.extend(str(c) for c in cats)
+    return normalize_categories(raw) or ["general"]
 
 
 def _record_from_row(row: Any) -> PolicyRegistryRecord:
-    applies = row.applies_to_contract_types or []
     meta = row.metadata if isinstance(row.metadata, dict) else {}
     return PolicyRegistryRecord(
         tenant_id=row.tenant_id,
@@ -39,7 +45,6 @@ def _record_from_row(row: Any) -> PolicyRegistryRecord:
         title=row.title,
         kind=row.kind,
         policy_type=row.policy_type,
-        applies_to_contract_types=list(applies),
         index_status=row.index_status,
         content_hash=row.content_hash,
         source=row.source or "upload",
@@ -49,7 +54,6 @@ def _record_from_row(row: Any) -> PolicyRegistryRecord:
 
 
 def _chunk_from_row(row: Any) -> IndexedChunk:
-    applies = row.applies_to_contract_types or []
     meta = row.metadata if isinstance(row.metadata, dict) else {}
     return IndexedChunk(
         chunk_id=row.chunk_id,
@@ -64,7 +68,6 @@ def _chunk_from_row(row: Any) -> IndexedChunk:
         text=row.text,
         context_text=row.context_text or row.text,
         policy_type=row.policy_type,
-        applies_to_contract_types=list(applies),
         metadata=meta,
     )
 
@@ -73,7 +76,14 @@ class PgVectorDocumentStore:
     """Persistent tenant-scoped document store with optional vector embeddings."""
 
     def __init__(self, database_url: str, *, hybrid_alpha: float = 0.5) -> None:
-        self._engine: Engine = create_engine(database_url, pool_pre_ping=True, future=True)
+        self._engine: Engine = create_engine(
+            database_url,
+            pool_pre_ping=True,
+            future=True,
+            pool_size=10,
+            max_overflow=20,
+            pool_recycle=300,
+        )
         self._hybrid_alpha = hybrid_alpha
 
     @property
@@ -101,13 +111,19 @@ class PgVectorDocumentStore:
         kind = parents[0].kind if parents else children[0].kind
         title = tree.title
         policy_type = parents[0].policy_type if parents else children[0].policy_type
-        applies = parents[0].applies_to_contract_types if parents else children[0].applies_to_contract_types
-        metadata = parents[0].metadata if parents else (children[0].metadata if children else {})
-        policy_ref = metadata.get("policy_ref") if metadata else None
-        content_hash = _content_hash(tree.canonical_text)
+        base_meta = dict(parents[0].metadata if parents else (children[0].metadata if children else {}))
+        metadata = {**base_meta, "categories": _document_categories(parents)}
+        policy_ref = metadata.get("policy_ref")
+        content_hash = compute_content_hash(
+            tree.canonical_text,
+            {
+                "categories": metadata.get("categories") if metadata else None,
+                "policy_type": policy_type,
+            },
+        )
 
-        with self._engine.begin() as conn:
-            existing = conn.execute(
+        with self._engine.connect() as conn:
+            existing_hash = conn.execute(
                 text(
                     """
                     SELECT content_hash FROM policy_documents
@@ -116,24 +132,36 @@ class PgVectorDocumentStore:
                 ),
                 {"tenant_id": tenant_id, "document_id": document_id},
             ).scalar()
-            if existing == content_hash:
-                logger.debug(
-                    "skip re-index unchanged document tenant=%s document_id=%s",
-                    tenant_id,
-                    document_id,
+            chunk_count = 0
+            if existing_hash == content_hash:
+                chunk_count = conn.execute(
+                    text(
+                        """
+                        SELECT COUNT(*) FROM document_chunks
+                        WHERE tenant_id = :tenant_id AND document_id = :document_id
+                        """
+                    ),
+                    {"tenant_id": tenant_id, "document_id": document_id},
+                ).scalar() or 0
+
+        if existing_hash == content_hash and chunk_count > 0:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE policy_documents
+                        SET index_status = 'indexed', indexed_at = now(), last_verified_at = now()
+                        WHERE tenant_id = :tenant_id AND document_id = :document_id
+                        """
+                    ),
+                    {"tenant_id": tenant_id, "document_id": document_id},
                 )
-                with self._engine.begin() as conn:
-                    conn.execute(
-                        text(
-                            """
-                            UPDATE policy_documents
-                            SET index_status = 'indexed', indexed_at = now()
-                            WHERE tenant_id = :tenant_id AND document_id = :document_id
-                            """
-                        ),
-                        {"tenant_id": tenant_id, "document_id": document_id},
-                    )
-                return
+            logger.debug(
+                "skip re-index unchanged document tenant=%s document_id=%s",
+                tenant_id,
+                document_id,
+            )
+            return
 
         child_texts = [c.context_text or c.text for c in children]
         embeddings = embed_documents(child_texts) if children else []
@@ -154,11 +182,11 @@ class PgVectorDocumentStore:
                     INSERT INTO policy_documents (
                         tenant_id, document_id, kind, title, policy_type,
                         applies_to_contract_types, policy_ref, content_hash,
-                        source, metadata, index_status
+                        source, metadata, index_status, last_verified_at
                     ) VALUES (
                         :tenant_id, :document_id, :kind, :title, :policy_type,
                         :applies_to, :policy_ref, :content_hash,
-                        :source, CAST(:metadata AS jsonb), 'indexed'
+                        :source, CAST(:metadata AS jsonb), 'indexed', now()
                     )
                     ON CONFLICT (tenant_id, document_id) DO UPDATE SET
                         kind = EXCLUDED.kind,
@@ -170,7 +198,8 @@ class PgVectorDocumentStore:
                         source = EXCLUDED.source,
                         metadata = EXCLUDED.metadata,
                         index_status = 'indexed',
-                        indexed_at = now()
+                        indexed_at = now(),
+                        last_verified_at = now()
                     """
                 ),
                 {
@@ -179,7 +208,7 @@ class PgVectorDocumentStore:
                     "kind": kind.value,
                     "title": title,
                     "policy_type": policy_type,
-                    "applies_to": applies or [],
+                    "applies_to": [],
                     "policy_ref": policy_ref,
                     "content_hash": content_hash,
                     "source": metadata.get("source", "upload") if metadata else "upload",
@@ -242,7 +271,7 @@ class PgVectorDocumentStore:
                         "context_text": chunk.context_text or chunk.text,
                         "kind": chunk.kind.value,
                         "policy_type": chunk.policy_type,
-                        "applies_to": chunk.applies_to_contract_types or [],
+                        "applies_to": [],
                         "embedding": embedding_literal,
                         "metadata": json.dumps(chunk.metadata or {}),
                     },
@@ -341,7 +370,6 @@ class PgVectorDocumentStore:
         title: str,
         kind: str,
         policy_type: str | None,
-        applies_to_contract_types: list[str],
         source: str,
         metadata: dict,
         index_status: Literal["pending", "indexed", "failed"],
@@ -379,7 +407,7 @@ class PgVectorDocumentStore:
                     "kind": kind,
                     "title": title,
                     "policy_type": policy_type,
-                    "applies_to": applies_to_contract_types or [],
+                    "applies_to": [],
                     "policy_ref": policy_ref,
                     "source": source,
                     "metadata": json.dumps(merged_meta),
@@ -440,7 +468,28 @@ class PgVectorDocumentStore:
                 ),
                 {"tenant_id": tenant_id, "policy_ref": policy_ref},
             ).mappings().first()
-        return _record_from_row(row) if row else None
+            if row is None:
+                return None
+            document_id = row["document_id"]
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM document_chunks
+                    WHERE tenant_id = :tenant_id AND document_id = :document_id
+                    """
+                ),
+                {"tenant_id": tenant_id, "document_id": document_id},
+            )
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM document_canonical
+                    WHERE tenant_id = :tenant_id AND document_id = :document_id
+                    """
+                ),
+                {"tenant_id": tenant_id, "document_id": document_id},
+            )
+        return _record_from_row(row)
 
     def list_policy_registry(
         self,
@@ -518,29 +567,46 @@ class PgVectorDocumentStore:
     ) -> list[UUID]:
         if not categories:
             return []
+        from document_core.config import get_settings
+
+        settings = get_settings()
         params: dict[str, Any] = {
             "tenant_id": tenant_id,
             "kind": kind.value,
             "categories": categories,
         }
-        contract_filter = ""
-        if contract_type:
-            params["contract_type"] = contract_type
-            contract_filter = (
-                " AND (cardinality(applies_to_contract_types) = 0 "
-                "OR :contract_type = ANY(applies_to_contract_types))"
+        stale_filter = ""
+        if settings.policy_stale_days > 0:
+            params["stale_days"] = settings.policy_stale_days
+            stale_filter = (
+                " AND last_verified_at > now() - make_interval(days => :stale_days)"
             )
         sql = f"""
-            SELECT document_id FROM policy_documents
-            WHERE tenant_id = :tenant_id AND kind = :kind
-              AND index_status = 'indexed'
-              AND EXISTS (
-                SELECT 1 FROM jsonb_array_elements_text(
-                    COALESCE(metadata->'categories', '[]'::jsonb)
-                ) cat
-                WHERE cat = ANY(:categories)
+            SELECT DISTINCT pd.document_id
+            FROM policy_documents pd
+            WHERE pd.tenant_id = :tenant_id AND pd.kind = :kind
+              AND pd.index_status = 'indexed'
+              AND (
+                EXISTS (
+                  SELECT 1 FROM jsonb_array_elements_text(
+                    COALESCE(pd.metadata->'categories', '[]'::jsonb)
+                  ) cat
+                  WHERE cat = ANY(:categories)
+                )
+                OR EXISTS (
+                  SELECT 1 FROM document_chunks pc
+                  WHERE pc.tenant_id = pd.tenant_id
+                    AND pc.document_id = pd.document_id
+                    AND pc.chunk_role = 'parent'
+                    AND EXISTS (
+                      SELECT 1 FROM jsonb_array_elements_text(
+                        COALESCE(pc.metadata->'categories', '[]'::jsonb)
+                      ) c
+                      WHERE c = ANY(:categories)
+                    )
+                )
               )
-              {contract_filter}
+              {stale_filter}
         """
         with self._engine.connect() as conn:
             rows = conn.execute(text(sql), params).scalars().all()
@@ -594,9 +660,6 @@ class PgVectorDocumentStore:
             rows = conn.execute(text(sql), params).mappings()
             for row in rows:
                 child = _chunk_from_row(row)
-                if request.contract_type and request.contract_type not in child.applies_to_contract_types:
-                    if child.applies_to_contract_types:
-                        continue
                 scored.append((float(row["combined_score"]), child))
         return scored
 
@@ -688,9 +751,6 @@ class PgVectorDocumentStore:
             rows = conn.execute(text(sql), params).mappings()
             for row in rows:
                 child = _chunk_from_row(row)
-                if request.contract_type and request.contract_type not in child.applies_to_contract_types:
-                    if child.applies_to_contract_types:
-                        continue
                 scored.append((float(row["combined_score"]), child))
         return scored
 
@@ -704,7 +764,4 @@ def _child_matches_filters(child: IndexedChunk, request: SearchRequest) -> bool:
         return False
     if request.policy_type and child.policy_type != request.policy_type:
         return False
-    if request.contract_type and request.contract_type not in child.applies_to_contract_types:
-        if child.applies_to_contract_types:
-            return False
     return True

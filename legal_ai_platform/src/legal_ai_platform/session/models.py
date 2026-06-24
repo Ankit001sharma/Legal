@@ -29,6 +29,7 @@ class MatterSnapshot(BaseModel):
     contract_document_id: str | None = None
     contract_title: str | None = None
     policies: list[dict[str, Any]] = Field(default_factory=list)
+    policy_document_ids: list[str] = Field(default_factory=list)
     contract_type: str | None = None
     policy_type: str | None = None
     last_review_report: dict[str, Any] | None = None

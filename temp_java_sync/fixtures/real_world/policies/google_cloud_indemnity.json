@@ -1,17 +1,22 @@
 {
   "tenant_id": "realworld-public",
   "policy_ref": "public-google-cloud-indemnity-2026",
-  "title": "Google Cloud Platform Agreement — Indemnification (Public)",
+  "title": "Google Cloud Platform Agreement \u2014 Indemnification (Public)",
   "policy_type": "nda",
-  "applies_to_contract_types": ["nda", "saas", "vendor"],
-  "categories": ["indemnity", "indemnification"],
+  "categories": [
+    "indemnity",
+    "indemnification"
+  ],
   "metadata": {
     "source": "public-web",
     "source_url": "https://cloud.google.com/terms",
     "source_company": "Google LLC",
     "source_document": "Google Cloud Platform Agreement",
-    "extracted_section": "Section 13 — Indemnification",
-    "categories": ["indemnity", "indemnification"],
+    "extracted_section": "Section 13 \u2014 Indemnification",
+    "categories": [
+      "indemnity",
+      "indemnification"
+    ],
     "review_guidance": "Require mutual indemnification: Google indemnifies for service IP infringement; Customer indemnifies for Customer Application, data, and AUP breaches.",
     "preferred_position": "Google will defend Customer against IP infringement allegations regarding Services; Customer will defend Google against claims arising from Customer Application, Customer Data, or breach of the AUP."
   },

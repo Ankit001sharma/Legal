@@ -26,6 +26,14 @@ def _section(title: str, text: str, section_id: str = "s1") -> IndexedChunk:
     )
 
 
+def test_classifier_prompt_includes_taxonomy_labels():
+    system, _ = section_classifier._load_prompt_template()
+    assert "liability" in system
+    assert "indemnity" in system
+    assert "vendor_security" in system
+    assert "{taxonomy_labels}" not in system
+
+
 @pytest.mark.asyncio
 async def test_classify_section_llm(monkeypatch):
     section = _section(
@@ -125,10 +133,12 @@ async def test_lexical_first_batch_mixed(monkeypatch):
     monkeypatch.setattr(section_classifier, "invoke_structured", _fake_invoke)
 
     results = await section_classifier.classify_sections_batch(sections)
-    assert called["n"] == 1
+    assert called["n"] == 0
     assert "liability" in results["3"].categories
     assert results["3"].classify_warning.startswith("lexical_first=")
     assert results["9"].categories == ["general"]
+    assert results["9"].substantive is False
+    assert results["9"].classify_warning == "boilerplate_skip"
 
 
 @pytest.mark.asyncio
@@ -209,6 +219,26 @@ async def test_classify_all_sections_recovers_failed_batch(monkeypatch):
     assert set(results.keys()) == {"3", "4"}
     assert "liability" in results["3"].categories
     assert "indemnity" in results["4"].categories
+
+
+@pytest.mark.asyncio
+async def test_classify_batch_size_not_reduced_across_reviews(monkeypatch):
+    sections = [
+        _section("Limitation of Liability", "liability cap text", section_id="3"),
+        _section("Indemnification", "indemnify text", section_id="4"),
+    ]
+    settings = ReviewSettings(section_classify_mode="llm_only", section_classify_batch_size=2)
+    batch_sizes: list[int] = []
+
+    async def _spy_batch(batch, **kwargs):
+        batch_sizes.append(len(batch))
+        raise RuntimeError("batch classify exploded")
+
+    monkeypatch.setattr(section_classifier, "classify_sections_batch", _spy_batch)
+
+    await section_classifier.classify_all_sections(sections, settings=settings)
+    await section_classifier.classify_all_sections(sections, settings=settings)
+    assert batch_sizes == [2, 2]
 
 
 @pytest.mark.asyncio
@@ -323,6 +353,69 @@ async def test_batch_fail_retries_single(monkeypatch):
     monkeypatch.setattr(section_classifier, "invoke_structured", _fake_invoke)
 
     results = await section_classifier.classify_sections_batch(sections, settings=retry_settings)
+    assert results["a"].categories == ["compliance"]
+    assert results["b"].categories == ["termination"]
+    assert calls["n"] >= 2
+
+
+@pytest.mark.asyncio
+async def test_normalize_batch_array_response(monkeypatch):
+    from review_agent.services.section_classifier import _normalize_classify_payload
+
+    sections = [
+        _section("Limitation of Liability", "Cap applies.", section_id="6"),
+        _section("Indemnification", "Vendor indemnifies.", section_id="7"),
+    ]
+    payload = [
+        {"section_id": "6", "categories": ["liability"], "query_terms": ["liability cap"]},
+        {"section_id": "7", "categories": ["indemnity"], "query_terms": ["indemnify"]},
+    ]
+    batch = _normalize_classify_payload(payload, sections)
+    assert len(batch.items) == 2
+    assert batch.items[0].categories == ["liability"]
+
+
+@pytest.mark.asyncio
+async def test_boilerplate_parties_skips_llm(monkeypatch):
+    section = _section(
+        "Parties and Effective Date",
+        "Acme Corp and Vendor Inc. enter this Agreement.",
+        section_id="1",
+    )
+    called = {"n": 0}
+
+    async def _fake_invoke(*_args, **_kwargs):
+        called["n"] += 1
+        raise AssertionError("LLM should not be called for boilerplate")
+
+    monkeypatch.setattr(section_classifier, "get_review_model", lambda **_: object())
+    monkeypatch.setattr(section_classifier, "invoke_structured", _fake_invoke)
+
+    result = await section_classifier.classify_section_policies(section)
+    assert called["n"] == 0
+    assert result.substantive is False
+    assert result.categories == ["general"]
+    assert result.classify_warning == "boilerplate_skip"
+
+
+@pytest.mark.asyncio
+async def test_substantive_title_blocks_general_on_fallback(monkeypatch):
+    section = _section(
+        "Limitation of Liability",
+        "The total liability shall not exceed fees paid in twelve months.",
+        section_id="6",
+    )
+
+    async def _fake_invoke(*_args, **_kwargs):
+        raise RuntimeError("batch failed")
+
+    monkeypatch.setattr(section_classifier, "get_review_model", lambda **_: object())
+    monkeypatch.setattr(section_classifier, "invoke_structured", _fake_invoke)
+    monkeypatch.setattr(section_classifier, "_salvage_classify_batch", _fake_invoke)
+
+    result = await section_classifier.classify_section_policies(section, settings=_LLM_ONLY)
+    assert "liability" in result.categories
+    assert result.categories != ["general"]
 
 
 @pytest.mark.asyncio

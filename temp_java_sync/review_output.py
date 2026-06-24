@@ -66,16 +66,26 @@ def parse_findings_from_envelope(data: dict[str, Any]) -> list[dict[str, Any]]:
 def build_platform_review_payload(
     *,
     tenant_id: str,
-    contract_document_id: str,
+    contract_document_id: str | None = None,
+    contract_text: str | None = None,
+    policy_document_ids: list[str] | None = None,
     contract_title: str,
     contract_type: str,
+    policy_source: str = "indexed",
 ) -> dict[str, Any]:
-    """Platform AgentRequest — query field required (P3-9)."""
-    return {
+    """Platform AgentRequest — query + contract text or document id."""
+    payload: dict[str, Any] = {
         "query": f"Review {contract_title} for compliance",
         "task_type": "review",
         "tenant_id": tenant_id,
-        "contract_document_id": contract_document_id,
         "contract_title": contract_title,
         "contract_type": contract_type,
+        "policy_source": policy_source,
     }
+    if contract_document_id:
+        payload["contract_document_id"] = contract_document_id
+    if contract_text:
+        payload["contract_text"] = contract_text
+    if policy_document_ids:
+        payload["policy_document_ids"] = [str(doc_id) for doc_id in policy_document_ids]
+    return payload

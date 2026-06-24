@@ -1,15 +1,20 @@
 {
   "tenant_id": "cisco-beta",
   "policy_ref": "public-cisco-responsible-minerals-2026",
-  "title": "Cisco Supplier Guide — Responsible Minerals",
+  "title": "Cisco Supplier Guide \u2014 Responsible Minerals",
   "policy_type": "vendor",
-  "applies_to_contract_types": ["vendor", "supplier", "msa"],
-  "categories": ["minerals", "compliance"],
+  "categories": [
+    "minerals",
+    "compliance"
+  ],
   "metadata": {
     "source": "public-web",
     "source_company": "Cisco Systems, Inc.",
-    "source_document": "Cisco Supplier Guide — Responsible Minerals (Jan 2026)",
-    "categories": ["minerals", "compliance"],
+    "source_document": "Cisco Supplier Guide \u2014 Responsible Minerals (Jan 2026)",
+    "categories": [
+      "minerals",
+      "compliance"
+    ],
     "review_guidance": "Suppliers must submit Minerals Reporting Templates (MRTs), source from RMAP-conformant smelters, and remove high-risk smelters when identified by Cisco.",
     "preferred_position": "Submit all requested MRTs to Cisco. Source minerals from smelters conforming to RMAP. Create plans for removing smelters identified as high-risk by Cisco."
   },

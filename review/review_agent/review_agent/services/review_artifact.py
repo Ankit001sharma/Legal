@@ -97,7 +97,6 @@ def _build_discovery(state: ReviewState) -> dict[str, Any]:
         "discovered_policy_document_ids": list(
             state.get("discovered_policy_document_ids") or []
         ),
-        "fetched_policy_refs": list(state.get("fetched_policy_refs") or []),
         "discovery_warnings": list(state.get("discovery_warnings") or []),
         "indexed_policies": indexed,
     }
@@ -127,7 +126,14 @@ def _build_ops(
     section_coverage: dict[str, Any],
     superseded_finding_ids: list[str],
     findings: list[ComplianceFinding],
+    failed_sections: list[dict[str, Any]],
 ) -> ReviewArtifactOps:
+    failed = list(failed_sections)
+    zero_hit_ids = [
+        str(entry["section_id"])
+        for entry in failed
+        if entry.get("error_code") == "retrieval_zero_hit"
+    ]
     return ReviewArtifactOps(
         retrieval_retry_sections=_int_val(compliance_stats, "retrieval_retry_sections"),
         retrieval_max_attempts_used=_int_val(
@@ -170,6 +176,8 @@ def _build_ops(
         reranker_lexical_fallback_sections=_int_val(
             compliance_stats, "reranker_lexical_fallback_sections"
         ),
+        degraded_section_count=len(failed),
+        retrieval_zero_hit_section_ids=zero_hit_ids,
     )
 
 
@@ -199,6 +207,7 @@ def build_review_artifact(
     ]
 
     superseded_finding_ids = list(state.get("superseded_finding_ids") or [])
+    failed_sections = list(state.get("failed_sections") or [])
     compliance_stats = dict(state.get("compliance_stats") or {})
     final_verify_stats = dict(state.get("final_verify_stats") or {})
     section_coverage = dict(state.get("section_coverage") or {})
@@ -240,11 +249,13 @@ def build_review_artifact(
         final_verify_stats=final_verify_stats,
         section_coverage=section_coverage,
         compliance_stats=compliance_stats,
+        degraded_sections=failed_sections,
         ops=_build_ops(
             compliance_stats=compliance_stats,
             final_verify_stats=final_verify_stats,
             section_coverage=section_coverage,
             superseded_finding_ids=superseded_finding_ids,
             findings=final_findings,
+            failed_sections=failed_sections,
         ),
     )

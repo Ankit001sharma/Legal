@@ -1,0 +1,25 @@
+{
+  "tenant_id": "acme-nda-clean",
+  "policy_ref": "enterprise-ms-msda-liability",
+  "title": "LIMITATION OF LIABILITY \u2014 MICROSOFT MDSA",
+  "policy_type": "nda",
+  "categories": [
+    "liability"
+  ],
+  "metadata": {
+    "source": "public-web",
+    "source_company": "Microsoft Corporation",
+    "source_document": "Microsoft Developer Agreement (MDSA)",
+    "categories": [
+      "liability"
+    ],
+    "preferred_position": "Aggregate liability limited to direct damages up to amounts paid during the 12 months before the liability arose; carve out indemnity, confidentiality, and IP breaches from the cap."
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Limitation of Liability",
+      "text": "Limitation. The aggregate liability of each party under this Agreement is limited to direct damages up to the amount paid under this Agreement for the Developer Services giving rise to that liability during the 12 months before the liability arose, or for Services provided free of charge, Five Hundred United States dollars ($500.00 USD). EXCLUSION. NEITHER PARTY, NOR ITS SUPPLIERS WILL BE LIABLE FOR LOSS OF REVENUE, LOST PROFITS, OR INDIRECT, SPECIAL, INCIDENTAL, CONSEQUENTIAL, PUNITIVE, OR EXEMPLARY DAMAGES, EVEN IF THE PARTY KNEW THEY WERE POSSIBLE. Exceptions to Limitations. The limits of liability in this Section 8 apply to the fullest extent permitted by applicable law, but do not apply to: (1) the parties' obligations under Section 7; or (2) breach of Sections 3.2 - 3.4 or violation of the other's intellectual property rights."
+    }
+  ]
+}

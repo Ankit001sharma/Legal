@@ -47,7 +47,9 @@ async function checkHealth() {
     const caps = data.mcp_capabilities || [];
     const multiPid = (data.port_listener_count || 0) > 1;
     const missingCap = docOk && !caps.includes("search_request_metadata");
-    if (multiPid) {
+    if (!data.llm_configured) {
+      setStatus("LLM key missing — set LLM_API_KEY in review/review_agent/.env", "err");
+    } else if (multiPid) {
       setStatus("WARNING: multiple processes on document-mcp port", "err");
     } else if (missingCap) {
       setStatus("WARNING: MCP missing search_request_metadata (stale?)", "err");
@@ -60,10 +62,56 @@ async function checkHealth() {
   }
 }
 
-function showContractId(id) {
-  const el = $("contractId");
-  el.textContent = "contract_document_id: " + id;
+function showSessionInfo(text) {
+  const el = $("sessionInfo");
+  el.textContent = text;
   el.classList.remove("hidden");
+}
+
+function updateContractCharCount() {
+  const n = ($("contractText")?.value || "").length;
+  const el = $("contractCharCount");
+  if (el) el.textContent = `${n.toLocaleString()} characters`;
+}
+
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escAttr(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+function primaryFindings(findings) {
+  const byKey = new Map();
+  for (const f of findings) {
+    const key = `${f.contract_section_id || ""}:${f.dimension_label || ""}`;
+    const existing = byKey.get(key);
+    const source = f.metadata?.source || "";
+    if (existing) {
+      if (source === "playbook_compare" && existing.metadata?.source !== "playbook_compare") {
+        byKey.set(key, f);
+      }
+      continue;
+    }
+    byKey.set(key, f);
+  }
+  return [...byKey.values()].sort((a, b) => {
+    const sec = (a.contract_section_id || "").localeCompare(b.contract_section_id || "");
+    if (sec !== 0) return sec;
+    return severityRank(b.severity) - severityRank(a.severity);
+  });
+}
+
+function severityRank(sev) {
+  const order = { critical: 3, important: 2, info: 1 };
+  return order[String(sev || "").toLowerCase()] || 0;
 }
 
 function renderFindings(findings) {
@@ -93,54 +141,6 @@ function renderFindings(findings) {
     <tbody>${rows}</tbody></table>`;
 }
 
-function primaryFindings(findings) {
-  const byKey = new Map();
-  for (const f of findings) {
-    const key = `${f.contract_section_id || ""}:${f.dimension_label || ""}`;
-    const existing = byKey.get(key);
-    const source = f.metadata?.source || "";
-    if (existing) {
-      if (source === "playbook_compare" && existing.metadata?.source !== "playbook_compare") {
-        byKey.set(key, f);
-      }
-      continue;
-    }
-    byKey.set(key, f);
-  }
-  return [...byKey.values()].sort((a, b) => {
-    const sec = (a.contract_section_id || "").localeCompare(b.contract_section_id || "");
-    if (sec !== 0) return sec;
-    return severityRank(b.severity) - severityRank(a.severity);
-  });
-}
-
-function severityRank(sev) {
-  const order = { critical: 3, important: 2, info: 1 };
-  return order[String(sev || "").toLowerCase()] || 0;
-}
-
-function renderViolations(findings) {
-  const panel = $("violationsPanel");
-  if (!findings?.length) {
-    panel.innerHTML = "<p>No findings.</p>";
-    return;
-  }
-  const violations = primaryFindings(findings).filter(
-    (f) =>
-      f.status === "NON_COMPLIANT" &&
-      (f.contract_quote || f.policy_quote) &&
-      (f.metadata?.source || "") !== "section_first_final"
-  );
-  if (!violations.length) {
-    panel.innerHTML =
-      "<p class='violations-intro'>No non-compliant findings with contract + policy quotes. Check <strong>All findings</strong> or <strong>Summary</strong>.</p>";
-    return;
-  }
-  panel.innerHTML =
-    `<p class="violations-intro">${violations.length} violation(s) — contract language vs playbook standard (side by side).</p>` +
-    violations.map(violationCardHtml).join("");
-}
-
 function violationCardHtml(f) {
   const policyTitle = f.metadata?.policy_title || "Policy playbook";
   const section = f.contract_section_id ? `§${f.contract_section_id}` : "—";
@@ -165,11 +165,26 @@ function violationCardHtml(f) {
   </article>`;
 }
 
-function esc(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function renderViolations(findings) {
+  const panel = $("violationsPanel");
+  if (!findings?.length) {
+    panel.innerHTML = "<p>No findings.</p>";
+    return;
+  }
+  const violations = primaryFindings(findings).filter(
+    (f) =>
+      f.status === "NON_COMPLIANT" &&
+      (f.contract_quote || f.policy_quote) &&
+      (f.metadata?.source || "") !== "section_first_final"
+  );
+  if (!violations.length) {
+    panel.innerHTML =
+      "<p class='violations-intro'>No non-compliant findings with contract + policy quotes. Check <strong>All findings</strong> or <strong>Summary</strong>.</p>";
+    return;
+  }
+  panel.innerHTML =
+    `<p class="violations-intro">${violations.length} violation(s) — contract language vs playbook standard (side by side).</p>` +
+    violations.map(violationCardHtml).join("");
 }
 
 function parseReviewOutput(data) {
@@ -208,19 +223,192 @@ function renderReview(data) {
   );
 }
 
+function disableButtons(on) {
+  document.querySelectorAll("button").forEach((b) => (b.disabled = on));
+}
+
+function showPreflight(data) {
+  const panel = $("preflightPanel");
+  const pf = data.preflight;
+  if (!pf) {
+    panel.classList.add("hidden");
+    return;
+  }
+  const tagged = (data.policies || [])
+    .map((p) => `${p.title || p.policy_ref}: [${(p.categories || []).join(", ") || "?"}]`)
+    .join(" | ");
+  panel.textContent =
+    `${pf.policies_synced ?? "?"} policies indexed (auto-tagged)` +
+    (tagged ? ` — ${tagged}` : "");
+  panel.classList.remove("hidden");
+}
+
+function applyPolicySyncResponse(data) {
+  if (data.tenant_id) {
+    $("sessionTenantId").value = data.tenant_id;
+    $("sessionTenantId").dataset.locked = "1";
+    showSessionInfo(`tenant: ${data.tenant_id} | ${data.policies?.length ?? 0} policies indexed`);
+  }
+  showPreflight(data);
+  $("rawJson").textContent = JSON.stringify(data, null, 2);
+  setStatus(
+    `Policies indexed — tenant ${data.tenant_id} | ${data.policies?.length ?? 0} playbook(s)`,
+    "ok"
+  );
+}
+
+// --- Policy blocks (raw text only; categories auto-tagged at ingest) ---
+
+const SAMPLE_POLICIES = [
+  {
+    title: "Standard Confidentiality Playbook",
+    review_guidance: "Receiving party must use at least reasonable care. Term should be at least 2 years for vendor NDAs.",
+    text: "The receiving party shall protect Confidential Information using no less than reasonable care and industry-standard safeguards. NDA term shall be no less than two (2) years from the Effective Date.",
+  },
+  {
+    title: "Liability Cap Playbook",
+    review_guidance: "Vendor liability cap should not be below $500k for enterprise deals.",
+    text: "Total aggregate liability shall not be less than five hundred thousand dollars ($500,000) for vendor NDAs.",
+  },
+  {
+    title: "Indemnification Standard",
+    review_guidance: "Indemnification must be mutual for both parties.",
+    text: "Each party shall indemnify, defend, and hold harmless the other party from third-party claims arising from that party's gross negligence, willful misconduct, or material breach.",
+  },
+];
+
+function policyCardHtml(policy, index) {
+  const canRemove = index > 0;
+  return `<div class="policy-card" data-index="${index}">
+    <div class="policy-card-head">
+      <input class="policy-title-input" type="text" value="${escAttr(policy.title || "")}" placeholder="Policy title" />
+      ${canRemove ? '<button type="button" class="danger btn-remove-policy">Remove</button>' : ""}
+    </div>
+    <label class="compact-label">Review guidance (optional)
+      <input class="policy-guidance-input" type="text" value="${escAttr(policy.review_guidance || "")}" placeholder="What the reviewer should check for" />
+    </label>
+    <label class="compact-label">Policy raw text
+      <textarea class="policy-text-input" rows="5" placeholder="Paste full playbook / policy standard text…">${esc(policy.text || "")}</textarea>
+    </label>
+  </div>`;
+}
+
+function renderPolicyBlocks(policies) {
+  $("policyBlocks").innerHTML = policies.map(policyCardHtml).join("");
+  bindPolicyButtons();
+}
+
+function bindPolicyButtons() {
+  $("policyBlocks").querySelectorAll(".btn-remove-policy").forEach((btn) => {
+    btn.onclick = () => {
+      btn.closest(".policy-card")?.remove();
+    };
+  });
+}
+
+function addPolicyBlock() {
+  const container = $("policyBlocks");
+  const index = container.querySelectorAll(".policy-card").length;
+  container.insertAdjacentHTML(
+    "beforeend",
+    policyCardHtml({ title: "", review_guidance: "", text: "" }, index)
+  );
+  bindPolicyButtons();
+}
+
+function collectPoliciesPayload() {
+  return [...$("policyBlocks").querySelectorAll(".policy-card")].map((card) => ({
+    title: card.querySelector(".policy-title-input")?.value.trim() || "Policy",
+    review_guidance: card.querySelector(".policy-guidance-input")?.value.trim() || "",
+    policy_type: $("contractType").value.trim() || "nda",
+    text: card.querySelector(".policy-text-input")?.value || "",
+  }));
+}
+
+async function runSyncPolicies() {
+  const policies = collectPoliciesPayload().filter((p) => p.text.trim());
+  if (!policies.length) {
+    setStatus("Add at least one policy with raw text", "err");
+    return;
+  }
+
+  setStatus("Indexing policies (auto-tagging categories)…", "running");
+  disableButtons(true);
+  try {
+    const data = await api("/api/sync-policies", {
+      method: "POST",
+      body: JSON.stringify({
+        policies,
+        use_shared_tenant: $("useSharedTenant").checked,
+        replace_tenant_policies: $("replaceTenantPolicies").checked,
+      }),
+    });
+    applyPolicySyncResponse(data);
+  } catch (e) {
+    setStatus("Policy sync failed: " + e.message, "err");
+    $("rawJson").textContent = e.message;
+  } finally {
+    disableButtons(false);
+  }
+}
+
+function loadSamplePolicies() {
+  renderPolicyBlocks(SAMPLE_POLICIES);
+  setStatus("Sample policies loaded — categories auto-tagged on index", "ok");
+}
+
+async function loadSampleContract() {
+  setStatus("Loading fixture contract text…", "running");
+  try {
+    const data = await api("/api/fixture-contract");
+    $("contractText").value = data.contract_text || "";
+    $("contractTitle").value = "Mutual Non-Disclosure Agreement";
+    $("contractType").value = "nda";
+    updateContractCharCount();
+    setStatus("Sample NDA contract text loaded", "ok");
+  } catch (e) {
+    setStatus("Failed to load sample contract: " + e.message, "err");
+  }
+}
+
+async function runReviewText(usePlatform) {
+  const contractText = ($("contractText").value || "").trim();
+  if (!contractText) {
+    setStatus("Paste full contract raw text before review", "err");
+    return;
+  }
+
+  setStatus(usePlatform ? "Review via platform…" : "Running review…", "running");
+  disableButtons(true);
+  try {
+    const data = await api("/api/review-text", {
+      method: "POST",
+      body: JSON.stringify({
+        query: $("reviewQuery").value.trim() || "Review this contract against our policies",
+        contract_text: contractText,
+        contract_title: $("contractTitle").value.trim() || "Contract",
+        contract_type: $("contractType").value.trim() || "nda",
+        use_platform: usePlatform,
+        tenant_id: $("sessionTenantId").value.trim() || null,
+      }),
+    });
+    renderReview(data);
+  } catch (e) {
+    setStatus("Review failed: " + e.message, "err");
+    $("rawJson").textContent = e.message;
+  } finally {
+    disableButtons(false);
+  }
+}
+
 async function runSync() {
-  setStatus("Syncing NDA + policies (Java stub)…", "running");
+  setStatus("Indexing fixture policies…", "running");
   disableButtons(true);
   try {
     const data = await api("/api/sync", { method: "POST", body: "{}" });
-    showContractId(data.contract.document_id);
-    $("rawJson").textContent = JSON.stringify(data, null, 2);
-    setStatus(
-      `Sync OK — ${data.verify.section_count} sections, ${data.policies.length} policies`,
-      "ok"
-    );
+    applyPolicySyncResponse(data);
   } catch (e) {
-    setStatus("Sync failed: " + e.message, "err");
+    setStatus("Fixture sync failed: " + e.message, "err");
     $("rawJson").textContent = e.message;
   } finally {
     disableButtons(false);
@@ -228,7 +416,7 @@ async function runSync() {
 }
 
 async function runReview(usePlatform) {
-  setStatus(usePlatform ? "Review via platform…" : "Review (direct)…", "running");
+  setStatus(usePlatform ? "Review fixture via platform…" : "Review fixture (direct)…", "running");
   disableButtons(true);
   try {
     const data = await api("/api/review", {
@@ -277,232 +465,10 @@ async function runFullE2e() {
       const review = await api("/api/outputs/review_result.json");
       renderReview(review);
     } catch {
-      /* review output optional */
+      /* optional */
     }
   } catch (e) {
     setStatus("E2E failed: " + e.message, "err");
-    $("rawJson").textContent = e.message;
-  } finally {
-    disableButtons(false);
-  }
-}
-
-function disableButtons(on) {
-  document.querySelectorAll("button").forEach((b) => (b.disabled = on));
-}
-
-// --- Custom paste-text panel ---
-
-const SAMPLE = {
-  contract: {
-    title: "Mutual Non-Disclosure Agreement",
-    contract_type: "nda",
-    sections: [
-      {
-        section_id: "1",
-        title: "Confidential Information",
-        text: "Confidential Information means all non-public information disclosed by either party in written, oral, or visual form. The receiving party shall protect Confidential Information using the same degree of care it uses for its own confidential information, but no less than reasonable care.",
-      },
-      {
-        section_id: "2",
-        title: "Term",
-        text: "This Agreement shall remain in effect for three (3) years from the Effective Date unless terminated earlier by either party upon thirty (30) days written notice.",
-      },
-      {
-        section_id: "3",
-        title: "Limitation of Liability",
-        text: "Except for breaches of confidentiality obligations, the total liability of either party under this Agreement shall not exceed one hundred thousand dollars ($100,000). Neither party shall be liable for indirect, incidental, or consequential damages.",
-      },
-      {
-        section_id: "4",
-        title: "Indemnification",
-        text: "Vendor shall indemnify, defend, and hold harmless Customer from third-party claims arising from Vendor's gross negligence, willful misconduct, or material breach of this Agreement.",
-      },
-    ],
-  },
-  policies: [
-    {
-      title: "Standard Confidentiality Playbook",
-      categories: "confidentiality",
-      review_guidance: "Receiving party must use at least reasonable care. Term should be at least 2 years for vendor NDAs.",
-      text: "The receiving party shall protect Confidential Information using no less than reasonable care and industry-standard safeguards. NDA term shall be no less than two (2) years from the Effective Date.",
-    },
-    {
-      title: "Liability Cap Playbook",
-      categories: "liability",
-      review_guidance: "Vendor liability cap should not be below $500k for enterprise deals.",
-      text: "Total aggregate liability shall not be less than five hundred thousand dollars ($500,000) for vendor NDAs.",
-    },
-    {
-      title: "Indemnification Standard",
-      categories: "indemnification",
-      review_guidance: "Indemnification must be mutual for both parties.",
-      text: "Each party shall indemnify, defend, and hold harmless the other party from third-party claims arising from that party's gross negligence, willful misconduct, or material breach.",
-    },
-  ],
-};
-
-function sectionRowHtml(section, index) {
-  const sid = section.section_id ?? String(index + 1);
-  const canRemove = index > 0;
-  return `<div class="section-row" data-index="${index}">
-    <div class="section-row-head">
-      <input class="section-id-input" type="text" value="${escAttr(sid)}" placeholder="§" title="Section ID" />
-      <input class="section-title-input" type="text" value="${escAttr(section.title || "")}" placeholder="Section title" />
-      ${canRemove ? '<button type="button" class="danger btn-remove-section">Remove</button>' : ""}
-    </div>
-    <textarea class="section-text-input" rows="4" placeholder="Paste contract section text here…">${esc(section.text || "")}</textarea>
-  </div>`;
-}
-
-function policyCardHtml(policy, index) {
-  const canRemove = index > 0;
-  return `<div class="policy-card" data-index="${index}">
-    <div class="policy-card-head">
-      <input class="policy-title-input" type="text" value="${escAttr(policy.title || "")}" placeholder="Policy title" />
-      ${canRemove ? '<button type="button" class="danger btn-remove-policy">Remove</button>' : ""}
-    </div>
-    <label class="compact-label">Categories (comma-separated)
-      <input class="policy-categories-input" type="text" value="${escAttr(policy.categories || "general")}" placeholder="confidentiality, liability" />
-    </label>
-    <label class="compact-label">Review guidance (optional)
-      <input class="policy-guidance-input" type="text" value="${escAttr(policy.review_guidance || "")}" placeholder="What the reviewer should check for" />
-    </label>
-    <label class="compact-label">Policy text
-      <textarea class="policy-text-input" rows="5" placeholder="Paste playbook / policy standard text here…">${esc(policy.text || "")}</textarea>
-    </label>
-  </div>`;
-}
-
-function escAttr(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;");
-}
-
-function renderContractSections(sections) {
-  $("contractSections").innerHTML = sections.map(sectionRowHtml).join("");
-  bindSectionButtons();
-}
-
-function renderPolicyBlocks(policies) {
-  $("policyBlocks").innerHTML = policies.map(policyCardHtml).join("");
-  bindPolicyButtons();
-}
-
-function bindSectionButtons() {
-  $("contractSections").querySelectorAll(".btn-remove-section").forEach((btn) => {
-    btn.onclick = () => {
-      btn.closest(".section-row")?.remove();
-      reindexSectionIds();
-    };
-  });
-}
-
-function bindPolicyButtons() {
-  $("policyBlocks").querySelectorAll(".btn-remove-policy").forEach((btn) => {
-    btn.onclick = () => btn.closest(".policy-card")?.remove();
-  });
-}
-
-function reindexSectionIds() {
-  $("contractSections").querySelectorAll(".section-row").forEach((row, i) => {
-    const idInput = row.querySelector(".section-id-input");
-    if (idInput && !idInput.dataset.userEdited) {
-      idInput.value = String(i + 1);
-    }
-  });
-}
-
-function addContractSection() {
-  const container = $("contractSections");
-  const index = container.querySelectorAll(".section-row").length;
-  container.insertAdjacentHTML(
-    "beforeend",
-    sectionRowHtml({ section_id: String(index + 1), title: "", text: "" }, index)
-  );
-  bindSectionButtons();
-}
-
-function addPolicyBlock() {
-  const container = $("policyBlocks");
-  const index = container.querySelectorAll(".policy-card").length;
-  container.insertAdjacentHTML(
-    "beforeend",
-    policyCardHtml({ title: "", categories: "general", review_guidance: "", text: "" }, index)
-  );
-  bindPolicyButtons();
-}
-
-function collectCustomPayload() {
-  const sections = [...$("contractSections").querySelectorAll(".section-row")].map((row) => ({
-    section_id: row.querySelector(".section-id-input")?.value.trim() || "1",
-    title: row.querySelector(".section-title-input")?.value.trim() || "",
-    text: row.querySelector(".section-text-input")?.value || "",
-  }));
-
-  const policies = [...$("policyBlocks").querySelectorAll(".policy-card")].map((card) => ({
-    title: card.querySelector(".policy-title-input")?.value.trim() || "Policy",
-    categories: card.querySelector(".policy-categories-input")?.value.trim() || "general",
-    review_guidance: card.querySelector(".policy-guidance-input")?.value.trim() || "",
-    policy_type: $("customContractType").value.trim() || "nda",
-    text: card.querySelector(".policy-text-input")?.value || "",
-  }));
-
-  return {
-    contract: {
-      title: $("customContractTitle").value.trim() || "My Contract",
-      contract_type: $("customContractType").value.trim() || "nda",
-      sections,
-    },
-    policies,
-    run_review: true,
-  };
-}
-
-function loadSampleDocs() {
-  $("customContractTitle").value = SAMPLE.contract.title;
-  $("customContractType").value = SAMPLE.contract.contract_type;
-  renderContractSections(SAMPLE.contract.sections);
-  renderPolicyBlocks(SAMPLE.policies);
-  setStatus("Sample NDA + policies loaded — edit text or click Sync & review", "ok");
-}
-
-async function runCustomSync(reviewAfter) {
-  const payload = collectCustomPayload();
-  const hasContractText = payload.contract.sections.some((s) => s.text.trim());
-  const hasPolicyText = payload.policies.some((p) => p.text.trim());
-  if (!hasContractText) {
-    setStatus("Add at least one contract section with text", "err");
-    return;
-  }
-  if (!hasPolicyText) {
-    setStatus("Add at least one policy with text", "err");
-    return;
-  }
-
-  setStatus(reviewAfter ? "Syncing custom docs + running review…" : "Syncing custom docs…", "running");
-  disableButtons(true);
-  try {
-    const path = reviewAfter ? "/api/custom-review" : "/api/sync-custom";
-    const data = await api(path, { method: "POST", body: JSON.stringify(payload) });
-    showContractId(
-      data.contract_document_id ||
-        data.contract?.document_id ||
-        data.sync?.contract?.document_id
-    );
-    if (reviewAfter) {
-      renderReview(data);
-    } else {
-      $("rawJson").textContent = JSON.stringify(data, null, 2);
-      setStatus(
-        `Custom sync OK — ${data.verify?.section_count ?? "?"} sections, ${data.policies?.length ?? 0} policies`,
-        "ok"
-      );
-    }
-  } catch (e) {
-    setStatus((reviewAfter ? "Custom review" : "Custom sync") + " failed: " + e.message, "err");
     $("rawJson").textContent = e.message;
   } finally {
     disableButtons(false);
@@ -525,22 +491,53 @@ $("btnReview").onclick = () => runReview(false);
 $("btnReviewPlatform").onclick = () => runReview(true);
 $("btnTombstone").onclick = runTombstone;
 $("btnFullE2e").onclick = runFullE2e;
-$("btnAddSection").onclick = addContractSection;
 $("btnAddPolicy").onclick = addPolicyBlock;
-$("btnCustomReview").onclick = () => runCustomSync(true);
-$("btnCustomSync").onclick = () => runCustomSync(false);
-$("btnLoadSample").onclick = loadSampleDocs;
+$("btnSyncPolicies").onclick = runSyncPolicies;
+$("btnLoadSamplePolicies").onclick = loadSamplePolicies;
+$("btnReviewText").onclick = () => runReviewText(false);
+$("btnReviewTextPlatform").onclick = () => runReviewText(true);
+$("btnLoadSampleContract").onclick = loadSampleContract;
+$("contractText").oninput = updateContractCharCount;
+
+function updateActiveTenantPreview() {
+  const shared = $("useSharedTenant").checked;
+  const field = $("sessionTenantId");
+  if (!field) return;
+  if (shared) {
+    field.value = $("tenantId").value.trim() || "e2e-demo";
+    field.placeholder = "uses config tenant";
+  } else if (!field.dataset.locked) {
+    field.value = "";
+    field.placeholder = "auto dev-ui-… assigned on sync";
+  }
+  $("replacePoliciesRow").classList.toggle("hidden", !shared);
+  if (!shared) {
+    $("replaceTenantPolicies").checked = false;
+  }
+}
+
+function toggleSharedTenantUi() {
+  updateActiveTenantPreview();
+}
+
+$("useSharedTenant").onchange = toggleSharedTenantUi;
+$("tenantId").oninput = updateActiveTenantPreview;
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadSamplePolicies();
+  updateActiveTenantPreview();
+  updateContractCharCount();
+});
 
 (async function init() {
-  renderContractSections([{ section_id: "1", title: "", text: "" }]);
-  renderPolicyBlocks([{ title: "", categories: "general", review_guidance: "", text: "" }]);
   try {
     const cfg = await api("/api/config");
     $("docUrl").value = cfg.document_server_url;
     $("platformUrl").value = cfg.platform_url;
     $("tenantId").value = cfg.tenant_id;
+    updateActiveTenantPreview();
     if (!cfg.llm_configured) {
-      setStatus("Warning: LLM_API_KEY not set — review will fail", "err");
+      setStatus("LLM_API_KEY not set — add to review/review_agent/.env", "err");
     }
   } catch {
     setStatus("Dev UI loaded", "");

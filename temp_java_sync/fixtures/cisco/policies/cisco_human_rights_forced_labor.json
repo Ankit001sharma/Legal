@@ -1,15 +1,20 @@
 {
   "tenant_id": "cisco-beta",
   "policy_ref": "public-cisco-human-rights-forced-labor-2026",
-  "title": "Cisco Supplier Guide + Global Human Rights Policy — Forced Labor & Due Diligence",
+  "title": "Cisco Supplier Guide + Global Human Rights Policy \u2014 Forced Labor & Due Diligence",
   "policy_type": "vendor",
-  "applies_to_contract_types": ["vendor", "supplier", "msa"],
-  "categories": ["human_rights", "labor"],
+  "categories": [
+    "human_rights",
+    "labor"
+  ],
   "metadata": {
     "source": "public-web",
     "source_company": "Cisco Systems, Inc.",
     "source_document": "Cisco Supplier Guide + Global Human Rights Policy EDCS-1210115",
-    "categories": ["human_rights", "labor"],
+    "categories": [
+      "human_rights",
+      "labor"
+    ],
     "review_guidance": "Suppliers must prohibit forced labor in any form, cascade Code standards on prohibition of forced labor and definition of fees, conduct due diligence on recruitment agencies, and maintain OECD-aligned due diligence program.",
     "preferred_position": "All suppliers must have a due diligence program aligned with OECD due diligence guidelines. Cisco prohibits forced labor in any form including bonded labor, involuntary prison labor, slavery or trafficking of persons."
   },
@@ -21,7 +26,7 @@
     },
     {
       "section_id": "2",
-      "title": "Global Human Rights Policy — Forced Labor Commitment",
+      "title": "Global Human Rights Policy \u2014 Forced Labor Commitment",
       "text": "Cisco prohibits forced labor in any form, including but not limited to bonded or indentured labor, involuntary or exploitative prison labor, slavery or trafficking of persons. Cisco expects partners and suppliers to adopt commitments aligned to the UN Guiding Principles, UDHR, and eight core ILO Conventions including the Forced Labour Convention and Abolition of Forced Labour Convention."
     }
   ]

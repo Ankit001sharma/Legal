@@ -4,17 +4,11 @@ from __future__ import annotations
 
 import os
 
-import httpx
-from document_core.schemas.chunk import SearchRequest
-
-from review_agent.clients.document_client import DocumentMCPClient
+from document_core.schemas.taxonomy import normalize_categories
+from review_agent.clients.document_client import DocumentMCPClient, STALE_MCP_PROBE_MESSAGE
 from review_agent.config import get_settings
 
-STALE_MCP_MESSAGE = (
-    "document-mcp does not support SearchRequest.metadata — likely a stale process on "
-    "port 8003. Run: Legal ai/scripts/stop_document_mcp.ps1 then "
-    "start_document_mcp.ps1 -Replace"
-)
+STALE_MCP_MESSAGE = STALE_MCP_PROBE_MESSAGE
 
 
 class ReviewPreflightError(RuntimeError):
@@ -47,32 +41,48 @@ async def check_mcp_search_metadata_capability(
     tenant_id: str = "e2e-demo",
 ) -> None:
     """Probe P0-1 surface: search_policy_by_categories with metadata.categories."""
-    health = await client.health()
-    capabilities = list(health.get("capabilities") or [])
-    if "search_request_metadata" not in capabilities:
-        raise ReviewPreflightError(STALE_MCP_MESSAGE)
-
-    request = SearchRequest(tenant_id=tenant_id, query="preflight-probe", top_k=1)
-    payload = request.model_dump(mode="json")
-    payload["metadata"] = {**(payload.get("metadata") or {}), "categories": []}
-
-    url = f"{client.base_url}/tools/search_policy_by_categories"
     try:
-        if client._injected_client is not None:
-            response = await client._injected_client.post(url, json=payload)
-        else:
-            async with httpx.AsyncClient(timeout=client.timeout_seconds) as http:
-                response = await http.post(url, json=payload)
-    except Exception as exc:  # noqa: BLE001
-        raise ReviewPreflightError(f"document-mcp category search probe failed: {exc}") from exc
+        await client.probe_search_metadata_capability(tenant_id=tenant_id)
+    except RuntimeError as exc:
+        raise ReviewPreflightError(str(exc)) from exc
 
-    if response.status_code >= 400:
-        body = (response.text or "").lower()
-        if "metadata" in body:
-            raise ReviewPreflightError(STALE_MCP_MESSAGE)
-        raise ReviewPreflightError(
-            f"document-mcp category search probe failed ({response.status_code}): {response.text[:300]}"
-        )
+
+async def check_scoped_documents_indexed(
+    client: DocumentMCPClient,
+    *,
+    tenant_id: str,
+    policy_document_ids: list[str],
+    contract_document_id: str | None = None,
+) -> list[str]:
+    """Verify scoped IDs exist and are indexed; return non-fatal warnings."""
+    response = await client.list_policy_registry(tenant_id)
+    by_id = {str(record.document_id): record for record in response.policies}
+    warnings: list[str] = []
+
+    def _check_doc(doc_id: str, label: str) -> None:
+        record = by_id.get(doc_id)
+        if record is None:
+            raise ReviewPreflightError(f"{label} document not found: {doc_id}")
+        if record.index_status != "indexed":
+            raise ReviewPreflightError(
+                f"{label} {doc_id} index_status={record.index_status}; expected indexed"
+            )
+
+    if contract_document_id:
+        _check_doc(str(contract_document_id), "contract")
+
+    for raw_id in policy_document_ids:
+        pid = str(raw_id).strip()
+        if not pid:
+            continue
+        _check_doc(pid, "policy")
+        cats = normalize_categories((by_id[pid].metadata or {}).get("categories"))
+        if not cats or cats == ["general"]:
+            warnings.append(
+                f"policy {pid} has only general categories; retrieval may be weak"
+            )
+
+    return warnings
 
 
 async def run_review_preflight(
@@ -80,9 +90,12 @@ async def run_review_preflight(
     *,
     preflight_enabled: bool = True,
     mcp_capability_probe: bool | None = None,
-) -> None:
+    tenant_id: str | None = None,
+    policy_document_ids: list[str] | None = None,
+    contract_document_id: str | None = None,
+) -> list[str]:
     if not preflight_enabled:
-        return
+        return []
     check_llm_credentials()
     await check_document_mcp(client)
     probe = (
@@ -90,5 +103,15 @@ async def run_review_preflight(
         if mcp_capability_probe is not None
         else get_settings().review_preflight_mcp_capability_probe
     )
-    if probe:
+    if probe and tenant_id:
+        await check_mcp_search_metadata_capability(client, tenant_id=tenant_id)
+    elif probe:
         await check_mcp_search_metadata_capability(client)
+    if tenant_id and policy_document_ids:
+        return await check_scoped_documents_indexed(
+            client,
+            tenant_id=tenant_id,
+            policy_document_ids=policy_document_ids,
+            contract_document_id=contract_document_id,
+        )
+    return []

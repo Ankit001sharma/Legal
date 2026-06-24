@@ -15,6 +15,10 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
+from review_agent.errors import LLMUnavailableError
+from review_agent.observability.metrics import record_llm_call
+from review_agent.resilience.circuit_breaker import get_llm_breaker
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
@@ -116,13 +120,47 @@ def get_review_model(*, temperature: float = 0.0, max_tokens: int | None = None)
     return init_chat_model(model=model, **kwargs)
 
 
-def _extract_json_object(text: str) -> dict[str, Any]:
-    """Parse JSON from model output, tolerating fenced code blocks."""
+def _extract_json_payload(text: str) -> Any:
+    """Parse JSON from model output; tolerate fences, arrays, and extra trailing objects."""
     stripped = text.strip()
-    fence = re.search(r"```(?:json)?\s*(\{.*\})\s*```", stripped, re.DOTALL)
+    fence = re.search(r"```(?:json)?\s*([\[\{].*[\]\}])\s*```", stripped, re.DOTALL)
     if fence:
-        stripped = fence.group(1)
-    return json.loads(stripped)
+        stripped = fence.group(1).strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        if "Extra data" not in str(exc):
+            raise
+        decoder = json.JSONDecoder()
+        items: list[Any] = []
+        idx = 0
+        length = len(stripped)
+        while idx < length:
+            while idx < length and stripped[idx].isspace():
+                idx += 1
+            if idx >= length:
+                break
+            try:
+                obj, end = decoder.raw_decode(stripped, idx)
+            except json.JSONDecodeError:
+                break
+            items.append(obj)
+            idx = end
+        if not items:
+            raise
+        if len(items) == 1:
+            return items[0]
+        return {"items": items}
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    """Parse a JSON object from model output (legacy callers)."""
+    payload = _extract_json_payload(text)
+    if isinstance(payload, dict):
+        return payload
+    if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+        return {"items": payload}
+    raise ValueError("expected JSON object")
 
 
 async def _invoke_once(
@@ -158,7 +196,7 @@ async def _invoke_once(
     content = getattr(response, "content", "")
     if not isinstance(content, str):
         raise ValueError("LLM returned non-text content")
-    data = _extract_json_object(content)
+    data = _extract_json_payload(content)
     return schema.model_validate(data)
 
 
@@ -172,6 +210,11 @@ async def invoke_structured(
     """Invoke model with global concurrency cap and rate-limit retries."""
     from review_agent.config import get_settings
 
+    breaker = get_llm_breaker()
+    if not breaker.allow():
+        record_llm_call("invoke_structured", "circuit_open")
+        raise LLMUnavailableError("circuit_open:llm — LLM breaker is open")
+
     cfg = get_settings()
     limiter = _get_limiter()
 
@@ -180,14 +223,19 @@ async def invoke_structured(
         max_attempts = max(0, cfg.llm_rate_limit_max_retries) + 1
         for attempt in range(max_attempts):
             try:
-                return await _invoke_once(
+                result = await _invoke_once(
                     model,
                     schema,
                     system=system,
                     user=user,
                 )
+                breaker.record_success()
+                record_llm_call("invoke_structured", "ok")
+                return result
             except Exception as exc:  # noqa: BLE001
                 if not _is_rate_limit_error(exc):
+                    breaker.record_failure()
+                    record_llm_call("invoke_structured", "error")
                     raise
                 last_exc = exc
                 limiter.rate_limit_events += 1
@@ -197,6 +245,7 @@ async def invoke_structured(
                         max_attempts,
                         exc,
                     )
+                    record_llm_call("invoke_structured", "rate_limited")
                     raise
                 delay = min(
                     cfg.llm_rate_limit_backoff_base_seconds * (2**attempt),

@@ -110,6 +110,8 @@ For such sections, return one item with `INSUFFICIENT_POLICY_CONTEXT`.
 
 A "Prior review context" block may appear at the end. This is memory from earlier review passes — use it to maintain consistency but do not treat it as policy or contract text.
 
+When a **Related contract sections** block is present (survival / cross-reference excerpts from other clauses), you **must** consider those excerpts when evaluating term, survival, confidentiality duration, and incorporated obligations — not only the primary section body.
+
 ### Output format
 
 Return JSON only — no preamble, no markdown, no explanation outside the JSON:

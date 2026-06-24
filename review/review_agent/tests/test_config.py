@@ -20,3 +20,13 @@ def test_get_settings_exposes_review_plan_llm_max_tokens() -> None:
 def test_section_classify_mode_default() -> None:
     settings = ReviewSettings()
     assert settings.section_classify_mode == "lexical_first"
+
+
+def test_settings_cache_clear_refreshes(monkeypatch) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv("SECTION_CLASSIFY_BATCH_SIZE", "2")
+    assert get_settings().section_classify_batch_size == 2
+    monkeypatch.setenv("SECTION_CLASSIFY_BATCH_SIZE", "5")
+    assert get_settings().section_classify_batch_size == 2
+    get_settings.cache_clear()
+    assert get_settings().section_classify_batch_size == 5

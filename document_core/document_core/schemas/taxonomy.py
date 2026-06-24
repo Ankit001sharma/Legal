@@ -59,6 +59,11 @@ def _canonical_category(key: str) -> str:
     return _CATEGORY_ALIASES.get(key, key)
 
 
+def category_aliases() -> dict[str, str]:
+    """Alias map for UI display and ingest hints (Java sync labels → canonical)."""
+    return dict(_CATEGORY_ALIASES)
+
+
 def normalize_categories(raw: list[str] | None) -> list[str]:
     """Lowercase, alias, dedupe, drop empty category tags."""
     if not raw:
@@ -75,3 +80,8 @@ def normalize_categories(raw: list[str] | None) -> list[str]:
         seen.add(key)
         out.append(key)
     return out
+
+
+def taxonomy_prompt_labels() -> str:
+    """Comma-separated allowed category labels for LLM prompts (excludes general)."""
+    return ", ".join(sorted(STANDARD_POLICY_CATEGORIES - {"general"}))

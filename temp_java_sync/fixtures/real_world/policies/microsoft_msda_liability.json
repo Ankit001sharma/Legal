@@ -1,17 +1,20 @@
 {
   "tenant_id": "realworld-public",
   "policy_ref": "public-microsoft-msda-liability-2026",
-  "title": "Microsoft Developer Agreement — Limitation of Liability (Public)",
+  "title": "Microsoft Developer Agreement \u2014 Limitation of Liability (Public)",
   "policy_type": "nda",
-  "applies_to_contract_types": ["nda", "saas", "vendor"],
-  "categories": ["liability"],
+  "categories": [
+    "liability"
+  ],
   "metadata": {
     "source": "public-web",
     "source_url": "https://learn.microsoft.com/en-us/legal/mdsa",
     "source_company": "Microsoft Corporation",
     "source_document": "Microsoft Developer Agreement (MDSA)",
-    "extracted_section": "Section 8 — Limitation of liability",
-    "categories": ["liability"],
+    "extracted_section": "Section 8 \u2014 Limitation of liability",
+    "categories": [
+      "liability"
+    ],
     "review_guidance": "Vendor agreements should cap direct liability at fees paid in the 12 months before the claim (not a fixed dollar cap), exclude indirect/consequential damages, and carve out indemnity, confidentiality, and IP breaches from the cap.",
     "preferred_position": "Aggregate liability limited to direct damages up to amounts paid during the 12 months before the liability arose."
   },

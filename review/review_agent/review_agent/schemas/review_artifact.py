@@ -66,6 +66,8 @@ class ReviewArtifactOps(BaseModel):
     guard_repair_success: int = 0
     reranker_cross_encoder_sections: int = 0
     reranker_lexical_fallback_sections: int = 0
+    degraded_section_count: int = 0
+    retrieval_zero_hit_section_ids: list[str] = Field(default_factory=list)
 
 
 class ReviewArtifact(BaseModel):
@@ -91,4 +93,5 @@ class ReviewArtifact(BaseModel):
     final_verify_stats: dict[str, Any] = Field(default_factory=dict)
     section_coverage: dict[str, Any] = Field(default_factory=dict)
     compliance_stats: dict[str, Any] = Field(default_factory=dict)
+    degraded_sections: list[dict[str, Any]] = Field(default_factory=list)
     ops: ReviewArtifactOps = Field(default_factory=ReviewArtifactOps)

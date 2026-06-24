@@ -16,6 +16,9 @@ class SectionEvalSpec:
     bad_statuses: frozenset[str] = frozenset()
     expect_gap: bool | None = None
     policy_ref_hint: str = ""
+    policy_ref_hints: tuple[str, ...] = ()
+    required_playbook_category: str = ""
+    category: str = ""
     note: str = ""
 
 
@@ -50,6 +53,9 @@ def load_gold_eval(path: Path) -> tuple[dict[str, SectionEvalSpec], dict[str, An
     for sid, entry in sections.items():
         expect = entry.get("expect_statuses") or []
         bad = entry.get("bad_statuses") or []
+        hints = entry.get("policy_ref_hints") or []
+        if entry.get("policy_ref_hint"):
+            hints = [entry["policy_ref_hint"], *list(hints)]
         specs[sid] = SectionEvalSpec(
             section_id=str(sid),
             topic=str(entry.get("topic", sid)),
@@ -57,6 +63,9 @@ def load_gold_eval(path: Path) -> tuple[dict[str, SectionEvalSpec], dict[str, An
             bad_statuses=frozenset(str(s) for s in bad),
             expect_gap=entry.get("expect_gap"),
             policy_ref_hint=str(entry.get("policy_ref_hint", "")),
+            policy_ref_hints=tuple(str(h) for h in hints if h),
+            required_playbook_category=str(entry.get("required_playbook_category", "")),
+            category=str(entry.get("category", "")),
             note=str(entry.get("note", "")),
         )
     meta: dict[str, Any] = {"eval_type": raw.get("eval_type", "engineer_curated_v1")}
@@ -170,16 +179,93 @@ def findings_by_section_from_report(report: Any) -> dict[str, dict]:
     if report is None:
         return findings_by_section
     for finding in report.findings:
+        meta = finding.metadata or {}
         row = {
             "section_id": finding.contract_section_id,
             "status": finding.status.value,
             "severity": finding.severity.value,
             "label": finding.dimension_label,
-            "policy_title": (finding.metadata or {}).get("policy_title", ""),
-            "source": (finding.metadata or {}).get("source", ""),
+            "policy_title": meta.get("policy_title", ""),
+            "policy_ref": meta.get("policy_ref", ""),
+            "policy_categories": list(meta.get("policy_categories") or meta.get("categories") or []),
+            "source": meta.get("source", ""),
         }
         sid = finding.contract_section_id or "?"
         src = row["source"]
         if sid not in findings_by_section or src == "playbook_compare":
             findings_by_section[sid] = row
     return findings_by_section
+
+
+def _scale_policy_category_map() -> dict[str, str]:
+    from beta_test.scale_corpus import POLICY_LIBRARY
+
+    mapping: dict[str, str] = {}
+    for item in POLICY_LIBRARY:
+        cats = item.get("categories") or []
+        if cats:
+            mapping[str(item["policy_ref"])] = str(cats[0])
+    return mapping
+
+
+def _family_match(
+    finding: dict[str, Any],
+    spec: SectionEvalSpec,
+    *,
+    category_map: dict[str, str],
+) -> bool:
+    required = spec.required_playbook_category or spec.category
+    if not required:
+        return True
+
+    policy_ref = str(finding.get("policy_ref") or "")
+    if policy_ref and category_map.get(policy_ref) == required:
+        return True
+
+    categories = finding.get("policy_categories") or []
+    if categories and str(categories[0]) == required:
+        return True
+
+    hints = spec.policy_ref_hints or ((spec.policy_ref_hint,) if spec.policy_ref_hint else ())
+    if policy_ref and any(hint in policy_ref for hint in hints):
+        return True
+
+    title = str(finding.get("policy_title") or "").lower()
+    if required == "sla" and any(token in title for token in ("sla", "uptime", "availability", "support response")):
+        return True
+    if required == "ai_usage" and any(token in title for token in ("ai", "automated", "machine learning", "ml ")):
+        return True
+
+    return False
+
+
+def score_playbook_family_alignment(
+    findings_by_section: dict[str, dict],
+    specs: dict[str, SectionEvalSpec],
+    *,
+    section_ids: list[str],
+    category_map: dict[str, str] | None = None,
+) -> tuple[int, list[dict[str, Any]]]:
+    """Assert compare/retrieval attached a policy from the expected category family."""
+    resolved_map = category_map or _scale_policy_category_map()
+    hits = 0
+    results: list[dict[str, Any]] = []
+    for sid in section_ids:
+        spec = specs.get(sid)
+        if spec is None:
+            continue
+        finding = findings_by_section.get(sid, {})
+        matched = _family_match(finding, spec, category_map=resolved_map)
+        if matched:
+            hits += 1
+        results.append(
+            {
+                "section": sid,
+                "topic": spec.topic,
+                "required_category": spec.required_playbook_category or spec.category,
+                "policy": finding.get("policy_title", ""),
+                "policy_ref": finding.get("policy_ref", ""),
+                "match": matched,
+            }
+        )
+    return hits, results

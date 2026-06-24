@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from legal_ai_platform.config import get_settings
@@ -87,6 +88,8 @@ class QueryOrchestrator:
         )
 
         if task_type == "review":
+            agent_request = self._prepare_review_scope(agent_request)
+            effective_context = agent_request.effective_context()
             self._validate_review_payload(agent_request, effective_context)
 
         agent = self.registry.get(task_type)
@@ -125,18 +128,30 @@ class QueryOrchestrator:
         return response
 
     @staticmethod
+    def _prepare_review_scope(request: AgentRequest) -> AgentRequest:
+        """Align review_policy_scope env with request policy_source."""
+        if request.policy_source == "session":
+            os.environ["REVIEW_POLICY_SCOPE"] = "request"
+        else:
+            os.environ["REVIEW_POLICY_SCOPE"] = "indexed"
+        return request
+
+    @staticmethod
     def _validate_review_payload(request: AgentRequest, context: dict) -> None:
         session_block = context.get("session") or {}
         matter = session_block.get("matter") or {}
-        settings = get_settings()
 
         contract_text = (
-            context.get("contract_text")
-            or request.contract_text
+            request.contract_text
+            or context.get("contract_text")
             or matter.get("contract_text")
-            or request.query
             or ""
-        ).strip()
+        )
+        if isinstance(contract_text, str):
+            contract_text = contract_text.strip()
+        else:
+            contract_text = str(contract_text or "").strip()
+
         contract_document_id = (
             request.contract_document_id
             or context.get("contract_document_id")
@@ -148,22 +163,19 @@ class QueryOrchestrator:
         else:
             contract_document_id = str(contract_document_id or "").strip()
 
-        if not contract_text and not contract_document_id:
-            raise ReviewPayloadError(
-                "Review requires contract_text or contract_document_id"
-            )
+        if not contract_document_id and not contract_text:
+            raise ReviewPayloadError("Review requires contract_text or contract_document_id")
 
-        if settings.review_require_contract_document_id and not contract_document_id:
+        policy_source = request.policy_source or context.get("policy_source") or "indexed"
+        policy_document_ids = (
+            request.policy_document_ids
+            or context.get("policy_document_ids")
+            or matter.get("policy_document_ids")
+            or []
+        )
+        if policy_source == "session" and not policy_document_ids:
             raise ReviewPayloadError(
-                "Review requires contract_document_id when "
-                "REVIEW_REQUIRE_CONTRACT_DOCUMENT_ID=true"
-            )
-
-        policies = request.policies or context.get("policies") or matter.get("policies") or []
-        if settings.review_reject_inline_policies and _has_inline_policy_texts(policies):
-            raise ReviewPayloadError(
-                "Inline policy text is not allowed when REVIEW_REJECT_INLINE_POLICIES=true; "
-                "sync policies to document-mcp and use policy_document_ids or policy_refs"
+                "Review requires policy_document_ids when policy_source=session"
             )
 
     def _raise_agent_not_found(self, task_type: str) -> None:
@@ -178,14 +190,3 @@ class QueryOrchestrator:
             f"No agent registered for task_type='{task_type}'. "
             f"Available: {self.registry.list_task_types()}"
         )
-
-
-def _has_inline_policy_texts(policies: list) -> bool:
-    for policy in policies:
-        if isinstance(policy, dict):
-            text = policy.get("text") or ""
-        else:
-            text = getattr(policy, "text", "") or ""
-        if str(text).strip():
-            return True
-    return False

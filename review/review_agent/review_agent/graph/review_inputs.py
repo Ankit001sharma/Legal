@@ -5,36 +5,17 @@ from __future__ import annotations
 from uuid import UUID
 
 
-def has_inline_policy_texts(policy_texts: list[dict] | None) -> bool:
-    for policy in policy_texts or []:
-        if (policy.get("text") or "").strip():
-            return True
-    return False
-
-
 def validate_review_inputs(
     *,
-    contract_text: str,
     contract_document_id: str | None,
-    require_contract_document_id: bool = False,
-    policy_texts: list[dict] | None = None,
-    reject_inline_policies: bool = False,
-) -> tuple[str | None, list[str]]:
-    """Return normalized document_id and startup warnings."""
+    contract_text: str | None = None,
+    policy_document_ids: list[str] | None = None,
+    policy_scope: str = "indexed",
+) -> tuple[str | None, list[str], list[str]]:
+    """Return normalized contract id (optional), policy ids, and startup warnings."""
     warnings: list[str] = []
-    doc_id_raw = (contract_document_id or "").strip()
     text = (contract_text or "").strip()
-
-    if require_contract_document_id and not doc_id_raw:
-        raise ValueError(
-            "contract_document_id is required when REVIEW_REQUIRE_CONTRACT_DOCUMENT_ID=true"
-        )
-
-    if reject_inline_policies and has_inline_policy_texts(policy_texts):
-        raise ValueError(
-            "Inline policy text is not allowed when REVIEW_REJECT_INLINE_POLICIES=true; "
-            "sync policies to document-mcp and use policy_document_ids or policy_refs"
-        )
+    doc_id_raw = (contract_document_id or "").strip()
 
     if not doc_id_raw and not text:
         raise ValueError("contract_text or contract_document_id is required")
@@ -45,7 +26,12 @@ def validate_review_inputs(
             parsed_id = str(UUID(doc_id_raw))
         except ValueError as exc:
             raise ValueError(f"invalid contract_document_id: {doc_id_raw}") from exc
-        if text:
-            warnings.append("contract_text ignored when contract_document_id is set")
+    elif text:
+        warnings.append("contract will be ingested from contract_text before review")
 
-    return parsed_id, warnings
+    policy_ids = [str(doc_id).strip() for doc_id in (policy_document_ids or []) if str(doc_id).strip()]
+    scope = (policy_scope or "indexed").strip().lower()
+    if scope == "request" and not policy_ids:
+        raise ValueError("policy_document_ids is required when policy_scope=request")
+
+    return parsed_id, policy_ids, warnings

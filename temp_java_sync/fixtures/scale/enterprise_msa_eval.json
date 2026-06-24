@@ -165,7 +165,9 @@
       "bad_statuses": [
         "COMPLIANT"
       ],
-      "category": "sla"
+      "category": "sla",
+      "required_playbook_category": "sla",
+      "policy_ref_hints": ["playbook-sla-availability", "playbook-sla-support"]
     },
     "14": {
       "topic": "Payment Terms and Invoicing",
@@ -251,7 +253,9 @@
       "bad_statuses": [
         "COMPLIANT"
       ],
-      "category": "ai_usage"
+      "category": "ai_usage",
+      "required_playbook_category": "ai_usage",
+      "policy_ref_hints": ["playbook-ai-usage-restriction", "playbook-ai-usage-transparency"]
     }
   }
 }

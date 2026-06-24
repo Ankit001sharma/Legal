@@ -43,10 +43,9 @@ class IngestRequest(BaseModel):
     text: str = Field(default="", description="Raw text; required if sections empty")
     sections: list[IngestSectionInput] = Field(default_factory=list)
     policy_type: str | None = None
-    applies_to_contract_types: list[str] = Field(default_factory=list)
     categories: list[str] = Field(
         default_factory=list,
-        description="Policy family tags for metadata retrieval (Phase 10)",
+        description="Ignored at ingest — categories assigned by document_core (Phase 37C).",
     )
     effective_date: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -58,10 +57,10 @@ class IngestRequest(BaseModel):
 
     @model_validator(mode="after")
     def require_text_or_sections(self) -> Self:
-        if not self.sections and not (self.text or "").strip():
-            raise ValueError("text or sections[] required")
         if self.text:
             self.text = self.text.strip()
+        if not self.sections and not (self.text or "").strip():
+            raise ValueError("text is required and must be non-empty when sections[] is omitted")
         return self
 
 
@@ -71,6 +70,7 @@ class SectionNode(BaseModel):
     title: str
     level: int
     text: str
+    categories: list[str] = Field(default_factory=list)
     children: list[SectionNode] = Field(default_factory=list)
 
 
@@ -95,7 +95,6 @@ class IndexedChunk(BaseModel):
     text: str
     context_text: str = ""
     policy_type: str | None = None
-    applies_to_contract_types: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

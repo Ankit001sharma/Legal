@@ -74,3 +74,8 @@ async def test_classifier_fallback_warning_in_retrieval_node(monkeypatch) -> Non
 
     assert any("classifier fallback" in w for w in result["warnings"])
     assert any("langchain" in w for w in result["warnings"])
+    failed = result.get("failed_sections") or []
+    assert any(
+        entry.get("section_id") == "3" and entry.get("error_code") == "retrieval_zero_hit"
+        for entry in failed
+    )

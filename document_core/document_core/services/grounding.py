@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 from document_core.schemas.chunk import GroundingCheckRequest, GroundingCheckResult
@@ -34,11 +35,19 @@ async def _verify_quote_in_section(
             message="section_id required for strict grounding",
         )
 
-    parent = doc_store.get_parent_by_section(
-        request.tenant_id,
-        request.document_id,
-        section_id,
-    )
+    if hasattr(doc_store, "get_parent_by_section_async"):
+        parent = await doc_store.get_parent_by_section_async(
+            request.tenant_id,
+            request.document_id,
+            section_id,
+        )
+    else:
+        parent = await asyncio.to_thread(
+            doc_store.get_parent_by_section,
+            request.tenant_id,
+            request.document_id,
+            section_id,
+        )
     if parent is None:
         return GroundingCheckResult(
             grounded=False,
@@ -74,11 +83,18 @@ async def _verify_quote_document_wide(
 ) -> GroundingCheckResult:
     haystacks: list[tuple[str, str | None]] = []
 
-    canonical = doc_store.get_canonical_text(request.tenant_id, request.document_id)
+    if hasattr(doc_store, "get_canonical_text_async"):
+        canonical = await doc_store.get_canonical_text_async(request.tenant_id, request.document_id)
+    else:
+        canonical = await asyncio.to_thread(doc_store.get_canonical_text, request.tenant_id, request.document_id)
     if canonical:
         haystacks.append((canonical, request.section_id))
 
-    for parent in doc_store.get_parents(request.tenant_id, request.document_id):
+    if hasattr(doc_store, "get_parents_async"):
+        parents = await doc_store.get_parents_async(request.tenant_id, request.document_id)
+    else:
+        parents = await asyncio.to_thread(doc_store.get_parents, request.tenant_id, request.document_id)
+    for parent in parents:
         haystacks.append((parent.text, parent.section_id))
 
     seen: set[str] = set()

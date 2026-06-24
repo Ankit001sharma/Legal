@@ -1,0 +1,52 @@
+Privacy Policy
+Last updated: January 06, 2025
+
+1. Introduction
+This Privacy Policy explains how Xecurify and miniOrange collect, store, use, disclose, and process information relating to individuals (Personal Data). Services include website www.miniorange.com, SaaS services, and customer communication channels (email, call, SMS, WhatsApp).
+
+2. Xecurify's Roles & Responsibilities
+When processing Personal Data as processor on behalf of customers, each customer controls what information is submitted. Xecurify processes such data per agreements with the Customer.
+
+3. Information you provide us
+We may collect name, email, postal address, phone number when you sign up, submit inquiries, register for events, or request support.
+Contract and Payment Data: billing name, address, last four digits of credit card (full card number not stored).
+Communications via SMS, Call & WhatsApp for service-related messages.
+
+4. Information We Automatically Collect
+Usage Data, IP addresses, browser type, cookies, Service Data including API logs and authorized user activity patterns.
+
+5. Information We Receive from Third Parties
+From resellers, business partners, review sites, and publicly available sources.
+
+6. Use of Information
+Operate and improve Services; customer support; security and fraud prevention; marketing (per preferences); legal compliance.
+
+7. Sharing of Personal Information
+With service providers (cloud hosting, messaging), affiliates, business partners (with consent), and as required by law. We do not sell personal information.
+
+8. Legal Bases for Processing (UK/EEA)
+Consent, legitimate interest, contractual necessity, legal obligation.
+
+9. Your Rights
+Right to access, rectification, erasure, restriction, data portability, object, and complain to supervisory authority.
+
+10. Data Retention
+Retained while ongoing legitimate business need exists. When no longer needed, deleted or anonymized. Subscriber Data retained per Subscriber instructions and applicable law.
+
+11. Security of Personal Information
+Technical and organizational measures including encryption, firewalls, intrusion detection, network monitoring. See Security Practices.
+
+12. International Data Transfer
+Servers in U.S., Europe, and Australia. Standard Contractual Clauses for EEA/UK transfers.
+
+13. General
+DPA available on request. Children's data not knowingly collected under 16. Contact info@xecurify.com for concerns.
+
+14. External links
+Third-party sites governed by their own privacy policies.
+
+15. Changes in the Policy
+Posted on website with revision date. Significant updates may be communicated via email, SMS, or WhatsApp.
+
+16. Contact
+Email: info@xecurify.com | Phone: +1 978 658 9387 | https://www.miniorange.com

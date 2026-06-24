@@ -1,24 +1,28 @@
 # Temp Java Sync — E2E test harness
 
-**Purpose:** Stand-in for the Java sync worker. Registers and indexes an NDA + playbooks via document-mcp (`sections[]`), then runs a **prod-style review** (`contract_document_id` only).
+**Purpose:** Python-owned sync path via **normalization** (`normalization.sync` library or `:9001` HTTP). Registers and indexes contracts + playbooks via document-mcp, then runs **prod-style review** (`contract_document_id` + optional `policy_document_ids`).
 
-**Safe to delete** when real Java sync exists. Isolated tenant: `e2e-demo`.
+Isolated tenants per benchmark (`e2e-demo`, `acme-nda-clean`, etc.).
 
 ---
 
 ## Prerequisites
 
 1. **Postgres + pgvector** running
-2. **document-mcp** on port 8003:
+2. **document-mcp** on port 8003 (includes normalization tools in-process — **no `:9001` required** when `NORMALIZATION_MODE=mcp`)
+3. **document-mcp** on port 8003 — **required** (normalization `:9001` removed in Phase 36)
 
 ```powershell
-cd "d:\Ankit_legal\Legal\Legal ai"
-$env:DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/review"
-$env:PYTHONPATH="d:\Ankit_legal\Legal\document_core;d:\Ankit_legal\Legal\Legal ai"
-uvicorn mcp.document_server.main:app --host 0.0.0.0 --port 8003
+cd "d:\Ankit_legal\Legal\Legal ai\scripts"
+.\start_postgres_podman.ps1
+.\start_document_mcp.ps1 -Replace
 ```
 
-3. Copy env and set LLM key:
+Optional **legal_ai_platform** on `:8080` for “Review via platform” button only.
+
+**Podman:** Postgres must be reachable at `127.0.0.1:5435` — start with `Legal ai\scripts\start_postgres_podman.ps1 -StartPodmanMachine` after `podman machine start`.
+
+4. Copy env and set LLM key:
 
 ```powershell
 cd "d:\Ankit_legal\Legal\temp_java_sync"
@@ -26,11 +30,13 @@ copy .env.example .env
 # Edit .env → LLM_API_KEY=...
 ```
 
+**Benchmark sync mode:** `BENCHMARK_SYNC_MODE=library` (default, in-process) or `http` (parity smoke via `NORMALIZATION_URL`).
+
 ---
 
 ## Dev UI (frontend for testing)
 
-Browser UI at **http://localhost:8090** — no separate React build.
+Browser UI at **http://localhost:8090** — sync calls **document-mcp** directly (`register` + `ingest_document` / `index_policy`).
 
 ```powershell
 cd "d:\Ankit_legal\Legal\temp_java_sync"
@@ -38,15 +44,15 @@ cd "d:\Ankit_legal\Legal\temp_java_sync"
 ```
 
 **Buttons:**
-1. **Java sync** — register + structured ingest (NDA + 3 playbooks)
+1. **Sync** — normalization HTTP session/fixtures → document-mcp
 2. **Run review** — direct review agent (prod path)
-3. **Review via platform** — `POST /query` on `:8080` (optional; requires `query` in payload)
+3. **Review via platform** — `POST /query` on `:8080` (optional)
 4. **Tombstone smoke** — delete policy + verify search
 5. **Full E2E** — all steps automated
 
-**Tabs:** Summary markdown, findings table, audit artifact, raw JSON.
+**Prerequisites:** document-mcp (+ Postgres); LLM key for review; optional platform `:8080` for platform review button.
 
-**Prerequisites:** document-mcp up; LLM key for review; platform optional for step 2b.
+**Troubleshooting:** Dev UI `/api/health` → `document_mcp.db` must be `ok`.
 
 ---
 
@@ -167,8 +173,8 @@ temp_java_sync/
   web/                  # Dev UI (HTML + CSS + JS)
   dev_ui_server.py      # FastAPI :8090
   run_dev_ui.ps1
-  fixtures/             # sample NDA + policies (Java payload shape)
-  java_sync_stub/     # sync client (register + structured ingest)
+  fixtures/             # sample NDA + policies (normalization payload shape)
+  beta_test/            # benchmarks + normalization_sync.py
   run_full_e2e.py     # master script
   run_sync_only.py
   run_review_only.py

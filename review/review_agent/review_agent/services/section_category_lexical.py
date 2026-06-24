@@ -55,8 +55,8 @@ _CATEGORY_KEYWORDS: tuple[tuple[str, str], ...] = (
 _CATEGORY_QUERY_TERMS: dict[str, tuple[str, ...]] = {
     "liability": ("limitation of liability cap",),
     "indemnity": ("indemnification obligations",),
-    "confidentiality": ("confidential information",),
-    "termination": ("termination notice period",),
+    "confidentiality": ("confidential information", "confidentiality period"),
+    "termination": ("termination notice period", "term and survival"),
     "ip": ("intellectual property ownership",),
     "privacy": ("data protection personal data",),
     "data_retention": ("data retention and deletion",),
@@ -85,8 +85,9 @@ _CATEGORY_QUERY_TERMS: dict[str, tuple[str, ...]] = {
     "compliance": ("supplier code of conduct",),
 }
 
-_MAX_BODY_SCAN_CHARS = 200
 _MAX_INFERRED_CATEGORIES = 3
+_DEFAULT_BODY_SCAN_CHARS = 800
+_DEFAULT_FULL_BODY_MAX_CHARS = 4000
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,29 @@ class LexicalClassifyResult:
     categories: list[str]
     confidence: Literal["title", "body", "none"]
     matched_via: str
+
+
+def _scan_settings(
+    body_scan_chars: int | None,
+    full_body_max_chars: int | None,
+) -> tuple[int, int]:
+    if body_scan_chars is not None and full_body_max_chars is not None:
+        return body_scan_chars, full_body_max_chars
+    try:
+        from review_agent.config import get_settings
+
+        cfg = get_settings()
+        return (
+            body_scan_chars if body_scan_chars is not None else cfg.section_lexical_body_scan_chars,
+            full_body_max_chars
+            if full_body_max_chars is not None
+            else cfg.section_lexical_full_body_max_chars,
+        )
+    except Exception:  # noqa: BLE001
+        return (
+            body_scan_chars if body_scan_chars is not None else _DEFAULT_BODY_SCAN_CHARS,
+            full_body_max_chars if full_body_max_chars is not None else _DEFAULT_FULL_BODY_MAX_CHARS,
+        )
 
 
 def _scan_text(text: str, *, title_priority: bool) -> list[str]:
@@ -112,10 +136,18 @@ def _scan_text(text: str, *, title_priority: bool) -> list[str]:
     return found
 
 
-def infer_lexical_classify(section: IndexedChunk) -> LexicalClassifyResult:
-    """Derive taxonomy categories with confidence from section title and body."""
+def infer_lexical_classify(
+    section: IndexedChunk,
+    *,
+    context_text: str = "",
+    body_scan_chars: int | None = None,
+    full_body_max_chars: int | None = None,
+) -> LexicalClassifyResult:
+    """Derive taxonomy categories with confidence from title, body tiers, and cross-ref context."""
+    scan_chars, full_max = _scan_settings(body_scan_chars, full_body_max_chars)
     title = (section.title or section.section_id or "").strip()
-    body = (section.text or "").strip()[:_MAX_BODY_SCAN_CHARS]
+    body = (section.text or "").strip()
+    context = (context_text or "").strip()
 
     if title:
         from_title = _scan_text(title, title_priority=True)
@@ -128,23 +160,39 @@ def infer_lexical_classify(section: IndexedChunk) -> LexicalClassifyResult:
                     matched_via="title",
                 )
 
-    combined = f"{title} {body}".strip()
-    if not combined:
-        return LexicalClassifyResult(categories=[], confidence="none", matched_via="")
+    def _body_scan(snippet: str) -> list[str]:
+        combined = f"{title} {context} {snippet}".strip()
+        if not combined:
+            return []
+        return normalize_categories(_scan_text(combined, title_priority=False))
 
-    from_body = normalize_categories(_scan_text(combined, title_priority=False))
-    if from_body:
+    from_partial = _body_scan(body[:scan_chars])
+    if from_partial:
         return LexicalClassifyResult(
-            categories=from_body,
+            categories=from_partial,
             confidence="body",
             matched_via="body",
         )
+
+    if body and len(body) <= full_max:
+        from_full = _body_scan(body)
+        if from_full:
+            return LexicalClassifyResult(
+                categories=from_full,
+                confidence="body",
+                matched_via="body_full",
+            )
+
     return LexicalClassifyResult(categories=[], confidence="none", matched_via="")
 
 
-def infer_categories_from_section(section: IndexedChunk) -> list[str]:
+def infer_categories_from_section(
+    section: IndexedChunk,
+    *,
+    context_text: str = "",
+) -> list[str]:
     """Derive taxonomy categories from section title and body when LLM classify fails."""
-    return infer_lexical_classify(section).categories
+    return infer_lexical_classify(section, context_text=context_text).categories
 
 
 def _contract_snippet_query(section: IndexedChunk) -> str:

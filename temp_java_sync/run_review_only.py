@@ -17,6 +17,7 @@ from review_agent.clients.document_client import DocumentMCPClient  # noqa: E402
 from review_agent.config import get_settings  # noqa: E402
 from review_agent.graph.review_graph import run_review  # noqa: E402
 from review_output import build_review_output_envelope  # noqa: E402
+from review_scope import policy_document_ids_from_sync  # noqa: E402
 
 
 async def main() -> int:
@@ -30,6 +31,10 @@ async def main() -> int:
 
     sync = json.loads(sync_path.read_text(encoding="utf-8"))
     contract = sync["contract"]
+    policy_document_ids = policy_document_ids_from_sync(sync)
+    if not policy_document_ids:
+        print("ERROR: no policy document IDs in sync_result.json", file=sys.stderr)
+        return 1
     tenant = os.environ.get("E2E_TENANT_ID", "e2e-demo")
     base_url = os.environ.get("DOCUMENT_SERVER_URL", "http://localhost:8003")
 
@@ -46,6 +51,7 @@ async def main() -> int:
         contract_document_id=contract["document_id"],
         contract_title="Mutual NDA (E2E)",
         contract_type="nda",
+        policy_document_ids=policy_document_ids,
     )
 
     report = state.get("report")

@@ -9,53 +9,32 @@ from review_agent.graph.nodes import clause_detection_node, contract_parser_node
 from review_agent.graph.review_inputs import validate_review_inputs
 
 
-def test_validate_requires_one_of_text_or_id():
-    with pytest.raises(ValueError, match="contract_text or contract_document_id"):
-        validate_review_inputs(contract_text="", contract_document_id=None)
+def test_validate_requires_contract_document_id():
+    with pytest.raises(ValueError, match="contract_document_id is required"):
+        validate_review_inputs(contract_document_id=None, policy_document_ids=["p1"])
+
+
+def test_validate_requires_policy_document_ids():
+    with pytest.raises(ValueError, match="policy_document_ids is required"):
+        validate_review_inputs(contract_document_id=str(uuid4()), policy_document_ids=[])
 
 
 def test_validate_rejects_invalid_uuid():
     with pytest.raises(ValueError, match="invalid contract_document_id"):
-        validate_review_inputs(contract_text="", contract_document_id="not-a-uuid")
+        validate_review_inputs(
+            contract_document_id="not-a-uuid",
+            policy_document_ids=["p1"],
+        )
 
 
-def test_validate_prefers_document_id_with_warning():
+def test_validate_accepts_ids():
     doc_id = str(uuid4())
     parsed, warnings = validate_review_inputs(
-        contract_text="some text",
         contract_document_id=doc_id,
+        policy_document_ids=["policy-a"],
     )
     assert parsed == doc_id
-    assert warnings
-
-
-def test_validate_requires_doc_id_when_prod_flag():
-    with pytest.raises(ValueError, match="REVIEW_REQUIRE_CONTRACT_DOCUMENT_ID"):
-        validate_review_inputs(
-            contract_text="some text",
-            contract_document_id=None,
-            require_contract_document_id=True,
-        )
-
-
-def test_validate_rejects_inline_policies_when_prod_flag():
-    with pytest.raises(ValueError, match="REVIEW_REJECT_INLINE_POLICIES"):
-        validate_review_inputs(
-            contract_text="contract",
-            contract_document_id=None,
-            policy_texts=[{"title": "P", "text": "inline policy"}],
-            reject_inline_policies=True,
-        )
-
-
-def test_validate_allows_empty_policies_when_reject_flag():
-    parsed, _ = validate_review_inputs(
-        contract_text="contract",
-        contract_document_id=None,
-        policy_texts=[],
-        reject_inline_policies=True,
-    )
-    assert parsed is None
+    assert warnings == []
 
 
 @pytest.mark.asyncio

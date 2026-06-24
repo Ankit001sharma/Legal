@@ -20,7 +20,7 @@ from document_core.store.pgvector_store import PgVectorDocumentStore
 
 
 def test_ingest_request_requires_text_or_sections():
-    with pytest.raises(ValueError, match="text or sections"):
+    with pytest.raises(ValueError, match="text is required"):
         IngestRequest(tenant_id="t1", text="", sections=[])
 
 

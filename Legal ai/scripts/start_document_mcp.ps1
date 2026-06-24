@@ -71,8 +71,11 @@ Only ONE document-mcp instance should listen on 8003 or you may hit stale code.
     & (Join-Path $PSScriptRoot "stop_document_mcp.ps1") -Quiet
 }
 
-& (Join-Path $PSScriptRoot "start_postgres_podman.ps1")
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $PSScriptRoot "start_postgres_podman.ps1") -StartPodmanMachine
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Postgres failed to start. Fix Podman/Docker first, then retry."
+    exit $LASTEXITCODE
+}
 
 if (-not $env:DOCUMENT_MCP_BUILD_ID) {
     try {

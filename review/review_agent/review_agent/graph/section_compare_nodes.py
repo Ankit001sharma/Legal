@@ -12,6 +12,7 @@ from review_agent.services.final_verify_llm import run_final_gap_verify
 from review_agent.services.section_compare_llm import compare_all_sections
 from review_agent.services.playbook_context import build_playbook_hints_by_document
 from review_agent.services.section_coverage import ensure_section_coverage, reviewable_sections
+from review_agent.resilience.failed_sections import compare_failed_entries
 from review_agent.services.section_merge import merge_section_findings
 from review_agent.state.review_state import ReviewState
 
@@ -30,10 +31,7 @@ def _load_sections(state: ReviewState) -> list[IndexedChunk]:
 
 
 def _playbook_hints(state: ReviewState):
-    return build_playbook_hints_by_document(
-        state.get("indexed_policies"),
-        policy_ref_by_document_id=state.get("policy_ref_by_document_id"),
-    )
+    return build_playbook_hints_by_document(state.get("indexed_policies"))
 
 
 async def section_compare_llm_node(
@@ -51,8 +49,38 @@ async def section_compare_llm_node(
     categories_by_section = {
         sid: list(bundle.categories) for sid, bundle in bundles.items()
     }
-    sections_with_policy = [s for s in sections if hits_by_section.get(s.section_id)]
     playbook_hints = _playbook_hints(state)
+
+    sections_with_policy = [
+        s
+        for s in sections
+        if hits_by_section.get(s.section_id)
+        and (
+            not settings.gap_boilerplate_skip_compare
+            or (bundles.get(s.section_id) or SectionRetrievalBundle(section_id=s.section_id))
+            .retrieval_meta.get("substantive", True)
+        )
+    ]
+
+    related_by_section = {}
+    raw_context = state.get("section_context_by_id") or {}
+    if settings.section_cross_ref_enabled and raw_context:
+        from review_agent.services.section_cross_reference import RelatedSectionBundle
+
+        for sid, payload in raw_context.items():
+            if not isinstance(payload, dict):
+                continue
+            related = payload.get("related") or []
+            tuples = [
+                (r.get("section_id", ""), r.get("title", ""), r.get("excerpt", ""))
+                for r in related
+                if isinstance(r, dict)
+            ]
+            related_by_section[sid] = RelatedSectionBundle(
+                primary_section_id=str(payload.get("primary_section_id") or sid),
+                related=[t for t in tuples if t[0]],
+                resolution_reason=str(payload.get("resolution_reason") or ""),
+            )
 
     items, compare_warnings, batch_stats = await compare_all_sections(
         sections_with_policy,
@@ -62,6 +90,7 @@ async def section_compare_llm_node(
         settings=settings,
         playbook_hints_by_document=playbook_hints,
         categories_by_section=categories_by_section,
+        related_by_section=related_by_section,
     )
 
     path_counts = {"dense": 0, "fts": 0, "metadata": 0}
@@ -88,6 +117,7 @@ async def section_compare_llm_node(
         "section_compare_items": [i.model_dump(mode="json") for i in items],
         "compliance_stats": stats,
         "warnings": compare_warnings,
+        "failed_sections": compare_failed_entries(items),
     }
 
 

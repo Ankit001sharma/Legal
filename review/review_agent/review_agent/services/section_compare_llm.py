@@ -8,6 +8,7 @@ from pathlib import Path
 from document_core.schemas.chunk import IndexedChunk, RetrievalHit
 from document_core.schemas.compliance import ComplianceStatus, Severity
 from review_agent.config import ReviewSettings, get_settings
+from review_agent.errors import FatalPipelineError, LLMUnavailableError
 from review_agent.models.llm_gateway import get_review_model, invoke_structured
 from review_agent.schemas.compliance_llm import ComplianceLLMResult
 from review_agent.schemas.section_compare import BatchSectionCompareLLMResult, SectionCompareItem
@@ -279,10 +280,27 @@ async def compare_section_batch(
     settings: ReviewSettings | None = None,
     playbook_hints_by_document: dict[str, PlaybookHints] | None = None,
     quote_stats: dict[str, int] | None = None,
+    related_by_section: dict | None = None,
 ) -> tuple[list[SectionCompareItem], list[str]]:
     cfg = settings or get_settings()
     if not sections:
         return [], []
+
+    related_context = extra_user_context
+    if related_by_section:
+        from review_agent.services.section_cross_reference import format_compare_related_block
+
+        batch_bundles = {
+            s.section_id: related_by_section[s.section_id]
+            for s in sections
+            if s.section_id in related_by_section
+        }
+        block = format_compare_related_block(
+            batch_bundles,
+            max_total_chars=cfg.section_compare_context_max_chars,
+        )
+        if block:
+            related_context = f"{related_context}\n\n{block}".strip() if related_context else block
 
     warnings: list[str] = []
     max_chars = cfg.section_compare_max_section_chars
@@ -305,10 +323,15 @@ async def compare_section_batch(
             hits_by_section,
             contract_type=contract_type,
             memory_context=memory_context,
-            extra_user_context=extra_user_context,
+            extra_user_context=related_context,
             cfg=cfg,
             playbook_hints_by_document=playbook_hints_by_document,
         )
+    except FatalPipelineError:
+        raise
+    except LLMUnavailableError as exc:
+        logger.warning("section compare LLM unavailable: %s", exc)
+        return _failure_items(sections, reason=str(exc)), warnings
     except Exception as exc:  # noqa: BLE001
         logger.warning("section compare LLM failed: %s", exc)
         if cfg.compare_batch_retry_single and len(sections) > 1:
@@ -322,11 +345,13 @@ async def compare_section_batch(
                         single_hits,
                         contract_type=contract_type,
                         memory_context=memory_context,
-                        extra_user_context=extra_user_context,
+                        extra_user_context=related_context,
                         cfg=cfg,
                         playbook_hints_by_document=playbook_hints_by_document,
                     )
                     retry_items.extend(single_result.items)
+                except FatalPipelineError:
+                    raise
                 except Exception as single_exc:  # noqa: BLE001
                     logger.warning(
                         "section compare single retry failed for %s: %s",
@@ -367,6 +392,7 @@ async def compare_all_sections(
     settings: ReviewSettings | None = None,
     playbook_hints_by_document: dict[str, PlaybookHints] | None = None,
     categories_by_section: dict[str, list[str]] | None = None,
+    related_by_section: dict | None = None,
 ) -> tuple[list[SectionCompareItem], list[str], dict[str, int | float | str]]:
     cfg = settings or get_settings()
     hits_by_section = {s.section_id: bundles.get(s.section_id, []) for s in sections}
@@ -394,6 +420,7 @@ async def compare_all_sections(
             settings=cfg,
             playbook_hints_by_document=playbook_hints_by_document,
             quote_stats=quote_stats,
+            related_by_section=related_by_section,
         )
 
     results = await gather_limited(
@@ -404,10 +431,11 @@ async def compare_all_sections(
     all_items: list[SectionCompareItem] = []
     all_warnings: list[str] = []
     failed_batches = 0
-    for result in results:
+    for batch, result in zip(batches, results, strict=True):
         if isinstance(result, BaseException):
             failed_batches += 1
             logger.warning("compare batch failed: %s", result)
+            all_items.extend(_failure_items(batch, reason=str(result)))
             continue
         items, warnings = result
         all_items.extend(items)

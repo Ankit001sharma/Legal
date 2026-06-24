@@ -273,3 +273,57 @@ async def test_format_sections_primary_only_single_policy(monkeypatch):
     assert len(items) == 1
     assert batch_stats["compare_hit_selection"]["category_aligned_sections"] == 1
 
+
+@pytest.mark.asyncio
+async def test_compare_includes_related_excerpts(monkeypatch):
+    from review_agent.services.section_cross_reference import RelatedSectionBundle
+
+    contract_text = "This Agreement continues for three years. Sections 3 through 10 survive."
+    policy_text = "NDA term shall be no less than five years."
+    captured = {"user": ""}
+
+    async def _fake_invoke(_model, _schema, *, system, user):
+        captured["user"] = user
+        return BatchSectionCompareLLMResult(
+            items=[
+                SectionCompareItem(
+                    section_id="5",
+                    policy_section_id="1",
+                    dimension_label="Term",
+                    status=ComplianceStatus.COMPLIANT,
+                    severity=Severity.INFO,
+                    contract_quote=contract_text[:80],
+                    policy_quote=policy_text,
+                    rationale="Survival incorporates confidentiality term.",
+                    confidence=0.85,
+                )
+            ]
+        )
+
+    monkeypatch.setattr(section_compare_llm, "get_review_model", lambda **_: object())
+    monkeypatch.setattr(section_compare_llm, "invoke_structured", _fake_invoke)
+
+    section = _section("5", contract_text)
+    hits = {"5": [_policy_hit(policy_text, categories=["confidentiality"])]}
+    related = {
+        "5": RelatedSectionBundle(
+            primary_section_id="5",
+            related=[
+                (
+                    "4",
+                    "Protection",
+                    "five (5) years thereafter each party shall protect Confidential Information.",
+                )
+            ],
+            resolution_reason="survival_3_10",
+        )
+    }
+    items, _warnings = await section_compare_llm.compare_section_batch(
+        [section],
+        hits,
+        related_by_section=related,
+    )
+    assert items
+    assert "five (5) years" in captured["user"]
+    assert "Related contract sections" in captured["user"]
+

@@ -37,18 +37,16 @@ from document_core.schemas.registry import (
     PolicyRegistryRecord,
     RegisterContractRequest,
     RegisterPolicyRequest,
-    SyncPolicyFromCatalogRequest,
 )
-from document_core.services.catalog_sync import sync_policy_from_catalog
 from document_core.services.grounding import verify_quote
 from document_core.services.ingest import ingest_document
-from document_core.services.registry import (
-    delete_policy,
-    get_contract_by_ref,
-    get_policy_by_ref,
-    list_policy_registry,
-    register_contract,
-    register_policy,
+from document_core.services.registry_async import (
+    delete_policy_async,
+    get_contract_by_ref_async,
+    get_policy_by_ref_async,
+    list_policy_registry_async,
+    register_contract_async,
+    register_policy_async,
 )
 from document_core.services.search import (
     get_section,
@@ -117,6 +115,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     from document_core.config import get_settings as get_core_settings
     from document_core.db.migrate import run_migrations
+    from document_core.store.async_adapter import AsyncDocumentStoreAdapter
     from document_core.store.pgvector_store import PgVectorDocumentStore
 
     core = get_core_settings()
@@ -128,8 +127,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         hybrid_alpha=core.search_hybrid_alpha,
     )
     pg_store.ping()
-    set_store(pg_store)
-    logger.info("document store backend=pgvector")
+    async_store = AsyncDocumentStoreAdapter(pg_store)
+    set_store(async_store)
+    logger.info("document store backend=pgvector (async adapter enabled)")
 
     yield
     logger.info("shutting down service=%s", SERVICE_NAME)
@@ -142,7 +142,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
 def _request_id() -> str:
     return uuid.uuid4().hex[:12]
 
@@ -152,7 +151,13 @@ async def health() -> HealthResponse:
     store = get_store()
     db_status = "ok"
     try:
-        if not store.ping():
+        if hasattr(store, "ping_async"):
+            ok = await store.ping_async()
+        else:
+            import asyncio
+
+            ok = await asyncio.to_thread(store.ping)
+        if not ok:
             db_status = "error"
     except Exception:  # noqa: BLE001
         db_status = "error"
@@ -186,17 +191,17 @@ async def index_policy_tool(request: IngestRequest) -> IngestResult:
 
 @app.post("/tools/register_policy", response_model=PolicyRegistryRecord)
 async def register_policy_tool(request: RegisterPolicyRequest) -> PolicyRegistryRecord:
-    return register_policy(request)
+    return await register_policy_async(request)
 
 
 @app.post("/tools/register_contract", response_model=PolicyRegistryRecord)
 async def register_contract_tool(request: RegisterContractRequest) -> PolicyRegistryRecord:
-    return register_contract(request)
+    return await register_contract_async(request)
 
 
 @app.post("/tools/get_policy_by_ref", response_model=PolicyRegistryRecord)
 async def get_policy_by_ref_tool(request: GetPolicyByRefRequest) -> PolicyRegistryRecord:
-    record = get_policy_by_ref(request.tenant_id, request.policy_ref)
+    record = await get_policy_by_ref_async(request.tenant_id, request.policy_ref)
     if record is None:
         raise HTTPException(status_code=404, detail="policy not found")
     return record
@@ -204,7 +209,7 @@ async def get_policy_by_ref_tool(request: GetPolicyByRefRequest) -> PolicyRegist
 
 @app.post("/tools/get_contract_by_ref", response_model=PolicyRegistryRecord)
 async def get_contract_by_ref_tool(request: GetPolicyByRefRequest) -> PolicyRegistryRecord:
-    record = get_contract_by_ref(request.tenant_id, request.policy_ref)
+    record = await get_contract_by_ref_async(request.tenant_id, request.policy_ref)
     if record is None:
         raise HTTPException(status_code=404, detail="contract not found")
     return record
@@ -213,7 +218,7 @@ async def get_contract_by_ref_tool(request: GetPolicyByRefRequest) -> PolicyRegi
 @app.post("/tools/delete_policy", response_model=DeletePolicyResult)
 async def delete_policy_tool(request: DeletePolicyRequest) -> DeletePolicyResult:
     try:
-        return delete_policy(request)
+        return await delete_policy_async(request)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -222,27 +227,7 @@ async def delete_policy_tool(request: DeletePolicyRequest) -> DeletePolicyResult
 async def list_policy_registry_tool(
     request: ListPolicyRegistryRequest,
 ) -> ListPolicyRegistryResponse:
-    return list_policy_registry(request)
-
-
-@app.post("/tools/sync_policy_from_catalog", response_model=IngestResult)
-async def sync_policy_from_catalog_tool(
-    request: SyncPolicyFromCatalogRequest,
-) -> IngestResult:
-    from document_core.config import get_settings as get_core_settings
-
-    core = get_core_settings()
-    if not core.policy_catalog_url:
-        raise HTTPException(status_code=400, detail="POLICY_CATALOG_URL is not configured")
-    if not core.policy_sync_enabled:
-        raise HTTPException(status_code=400, detail="policy sync is disabled")
-    try:
-        return await sync_policy_from_catalog(
-            request,
-            catalog_url=core.policy_catalog_url,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return await list_policy_registry_async(request)
 
 
 @app.post("/tools/search_contract")
@@ -333,7 +318,11 @@ async def verify_policy_quote_tool(request: GroundingCheckRequest) -> GroundingC
 @app.post("/tools/list_policies", response_model=ListPoliciesResponse)
 async def list_policies_tool(request: ListPoliciesRequest) -> ListPoliciesResponse:
     store = get_store()
-    doc_ids = store.list_documents(request.tenant_id, request.kind)
+    if hasattr(store, "list_documents_async"):
+        doc_ids = await store.list_documents_async(request.tenant_id, request.kind)
+    else:
+        import asyncio
+        doc_ids = await asyncio.to_thread(store.list_documents, request.tenant_id, request.kind)
     return ListPoliciesResponse(
         tenant_id=request.tenant_id,
         document_ids=[str(doc_id) for doc_id in doc_ids],

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
+import os
+import time
 from pathlib import Path
 from typing import Any, Literal
 
@@ -38,10 +39,7 @@ class ReviewSettings(BaseSettings):
 
     review_min_section_chars: int = 40
 
-    policy_catalog_url: str | None = None
-    policy_fetch_enabled: bool = True
-
-    review_policy_scope: Literal["request", "tenant", "discovered"] = "discovered"
+    review_policy_scope: Literal["indexed", "request"] = "indexed"
     contract_routing_mode: Literal["llm", "lexical"] = "llm"
     contract_routing_max_chars: int = 12_000
     review_plan_llm_max_tokens: int = 1024
@@ -60,11 +58,20 @@ class ReviewSettings(BaseSettings):
     discovery_contract_type_filter: bool = True
     discovery_contract_type_fallback_min_hits: int = 4
     discovery_section_category_sweep: bool = True
+    discovery_category_reserve_slots: bool = True
+    discovery_category_score_boost: float = 0.15
 
     section_classify_batch_size: int = 2
+    section_classify_batch_size_on_parse_fail: int = 1
     section_classify_max_chars: int = 12_000
     section_classify_mode: Literal["lexical_first", "llm_only"] = "lexical_first"
     section_classify_batch_retry_single: bool = True
+    section_lexical_body_scan_chars: int = 800
+    section_lexical_full_body_max_chars: int = 4000
+    section_classify_block_general_substantive: bool = True
+    section_cross_ref_enabled: bool = True
+    section_compare_context_max_chars: int = 3000
+    gap_boilerplate_skip_compare: bool = True
     retrieval_recall_top_k: int = 20
     retrieval_final_top_k: int = 10
     retrieval_max_attempts: int = 3
@@ -72,6 +79,7 @@ class ReviewSettings(BaseSettings):
     retrieval_category_hard_filter: bool = True
     retrieval_category_filter_fallback: bool = True
     retrieval_skip_hard_filter_for_general: bool = True
+    retrieval_max_hits_per_document: int = 3
     discovery_warn_on_cap: bool = True
     section_compare_batch_size: int = 2
     section_compare_max_findings_per_section: int = 4
@@ -94,10 +102,15 @@ class ReviewSettings(BaseSettings):
     gap_upgrade_after_gap_llm: bool = True
 
     enforce_section_coverage: bool = True
-    review_require_contract_document_id: bool = False
-    review_reject_inline_policies: bool = False
     review_preflight_enabled: bool = True
     review_preflight_mcp_capability_probe: bool = True
+    review_log_json: bool = False
+    review_metrics_enabled: bool = False
+
+    document_mcp_timeout_seconds: float = 60.0
+    document_mcp_health_timeout_seconds: float = 5.0
+    document_mcp_ingest_timeout_seconds: float = 120.0
+    document_mcp_search_timeout_seconds: float = 30.0
 
     playbook_enrich_compare: bool = True
     playbook_load_registry: bool = False
@@ -182,8 +195,27 @@ def build_runtime_settings_snapshot(
     }
 
 
-@lru_cache
+_settings_cache: ReviewSettings | None = None
+_settings_cached_at: float = 0.0
+_SETTINGS_TTL = float(os.getenv("SETTINGS_CACHE_TTL_SECONDS", "30"))
+
+
 def get_settings() -> ReviewSettings:
+    global _settings_cache, _settings_cached_at
+    now = time.monotonic()
+    if _settings_cache is not None and (now - _settings_cached_at) < _SETTINGS_TTL:
+        return _settings_cache
     settings = ReviewSettings()
     _maybe_warn_discovery_cap(settings)
+    _settings_cache = settings
+    _settings_cached_at = now
     return settings
+
+
+def _clear_settings_cache() -> None:
+    global _settings_cache, _settings_cached_at
+    _settings_cache = None
+    _settings_cached_at = 0.0
+
+
+get_settings.cache_clear = _clear_settings_cache  # type: ignore[attr-defined]

@@ -34,8 +34,16 @@ class DocumentCoreSettings(BaseSettings):
     embedding_enabled: bool = True
     embedding_dim: int = 768
     embedding_truncate_dim: int | None = None
-    policy_catalog_url: str | None = None
-    policy_sync_enabled: bool = True
+    policy_stale_days: int = 0
+    category_tagger_enabled: bool = True
+    category_tagger_mode: Literal["auto", "llm", "keyword"] = "keyword"
+    category_tagger_model: str = "mistral-small-latest"
+    category_tagger_batch_size: int = 8
+    category_tagger_max_section_chars: int = 1200
+    category_tagger_temperature: float = 0.0
+    child_chunk_max_chars: int = 700
+    child_chunk_overlap_sentences: int = 2
+    category_search_boost: float = 0.15
 
     @field_validator("embedding_truncate_dim", mode="before")
     @classmethod

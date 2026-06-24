@@ -1,0 +1,26 @@
+{
+  "tenant_id": "acme-nda-clean",
+  "policy_ref": "enterprise-ms-publisher-confidentiality",
+  "title": "ENTERPRISE VENDOR PLAYBOOK \u2014 Confidentiality (Microsoft Publisher)",
+  "policy_type": "nda",
+  "categories": [
+    "confidentiality"
+  ],
+  "metadata": {
+    "source": "public-web",
+    "source_company": "Microsoft Corporation",
+    "source_document": "Microsoft Publisher Agreement 8.0",
+    "categories": [
+      "confidentiality"
+    ],
+    "review_guidance": "Check 5-year post-term confidentiality, strictest confidence standard, affiliate/contractor flow-down, lawful disclosure carve-out.",
+    "preferred_position": "During the term and for 5 years after, parties hold Confidential Information in strictest confidence and do not disclose to third parties except affiliates or contractors under equivalent protective terms."
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Confidentiality",
+      "text": "Confidentiality. Information shared under this Agreement is subject to our existing Non-Disclosure Agreement (NDA). If no NDA exists, then during the term of this Agreement and for 5 years after, the parties will hold in strictest confidence, and will not use or disclose any Confidential Information of the other party to any third party (except to an Affiliate or contractor performing services on behalf of the recipient, and only subject to confidentiality terms as protective as this section). This section does not prohibit either party from responding to lawful requests from law enforcement authorities."
+    }
+  ]
+}

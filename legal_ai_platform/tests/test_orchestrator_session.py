@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from legal_ai_platform.agents.base.base_agent import BaseAgent
-from legal_ai_platform.models.agent import AgentRequest, AgentResponse, PolicyInput
+from legal_ai_platform.models.agent import AgentRequest, AgentResponse
 from legal_ai_platform.observability.hooks import HookRegistry
 from legal_ai_platform.orchestration.classifier import TaskClassifier
 from legal_ai_platform.orchestration.orchestrator import QueryOrchestrator, ReviewPayloadError
@@ -36,12 +37,16 @@ class _StubReviewAgent(BaseAgent):
 
     async def execute(self, request: AgentRequest) -> AgentResponse:
         ctx = request.effective_context()
-        contract = ctx.get("contract_text", "")
+        contract_id = ctx.get("contract_document_id", "")
         return AgentResponse(
             agent="review",
             task_type="review",
-            output=f"review done: {contract[:30]}",
-            artifacts={"report": {"findings": [{"id": "f1"}]}},
+            output=f"review done: {contract_id[:8]}",
+            artifacts={
+                "report": {"findings": [{"id": "f1"}]},
+                "contract_document_id": contract_id,
+                "policy_document_ids": ctx.get("policy_document_ids") or [],
+            },
             success=True,
             thread_id=request.thread_id,
         )
@@ -84,13 +89,15 @@ async def test_multi_turn_transcript_grows(orchestrator: QueryOrchestrator):
 
 @pytest.mark.asyncio
 async def test_review_then_followup_uses_matter(orchestrator: QueryOrchestrator):
+    contract_id = str(uuid4())
+    policy_id = str(uuid4())
     r1 = await orchestrator.handle(
         AgentRequest(
             query="review contract",
             task_type="review",
             tenant_id="demo",
-            contract_text="12.2 Liability cap twelve months.",
-            policies=[PolicyInput(title="P", text="Policy twelve months cap.")],
+            contract_document_id=contract_id,
+            policy_document_ids=[policy_id],
         )
     )
     assert r1.success

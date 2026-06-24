@@ -11,6 +11,7 @@ from document_core.schemas.chunk import DocumentKind, IndexedChunk, ListSections
 
 from review_agent.clients.document_client import DocumentMCPClient
 from review_agent.config import ReviewSettings, get_settings
+from review_agent.errors import FatalPipelineError
 from review_agent.models.llm_gateway import get_review_model, invoke_structured
 from review_agent.schemas.contract_routing import ContractRoutingResult
 
@@ -98,6 +99,8 @@ async def fetch_tenant_section_titles(
     seen: set[str] = set()
     try:
         doc_ids = await client.list_policies(tenant_id)
+    except FatalPipelineError:
+        raise
     except Exception as exc:  # noqa: BLE001
         logger.debug("list_policies for routing seed failed: %s", exc)
         return []
@@ -111,6 +114,8 @@ async def fetch_tenant_section_titles(
                     kind=DocumentKind.POLICY,
                 )
             )
+        except FatalPipelineError:
+            raise
         except Exception:  # noqa: BLE001
             continue
         for section in sections:
@@ -263,6 +268,8 @@ async def route_contract(
                     update={"contract_type": contract_type_hint.strip().lower()}
                 )
             return result, warnings
+        except FatalPipelineError:
+            raise
         except Exception as exc:  # noqa: BLE001
             last_error = exc
             logger.warning("contract routing LLM attempt %s failed: %s", attempt, exc)

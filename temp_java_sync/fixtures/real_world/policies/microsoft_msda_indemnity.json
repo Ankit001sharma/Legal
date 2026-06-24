@@ -1,17 +1,22 @@
 {
   "tenant_id": "realworld-public",
   "policy_ref": "public-microsoft-msda-indemnity-2026",
-  "title": "Microsoft Developer Agreement — Defense of Claims (Public)",
+  "title": "Microsoft Developer Agreement \u2014 Defense of Claims (Public)",
   "policy_type": "nda",
-  "applies_to_contract_types": ["nda", "saas", "vendor"],
-  "categories": ["indemnity", "indemnification"],
+  "categories": [
+    "indemnity",
+    "indemnification"
+  ],
   "metadata": {
     "source": "public-web",
     "source_url": "https://learn.microsoft.com/en-us/legal/mdsa",
     "source_company": "Microsoft Corporation",
     "source_document": "Microsoft Developer Agreement (MDSA)",
-    "extracted_section": "Section 7 — Defense of claims",
-    "categories": ["indemnity", "indemnification"],
+    "extracted_section": "Section 7 \u2014 Defense of claims",
+    "categories": [
+      "indemnity",
+      "indemnification"
+    ],
     "review_guidance": "Vendor NDAs should provide mutual defense/indemnification: each party defends the other against qualifying third-party claims, with notice, cooperation, and control of defense.",
     "preferred_position": "Each party will defend the other against third-party IP infringement claims (Microsoft) and misuse/violation claims arising from the other party's conduct (Customer)."
   },

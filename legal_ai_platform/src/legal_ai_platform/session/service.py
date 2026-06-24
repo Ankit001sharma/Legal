@@ -89,6 +89,9 @@ class SessionService:
             state.matter.contract_type = request.contract_type or ctx.get("contract_type")
         if request.policy_type or ctx.get("policy_type"):
             state.matter.policy_type = request.policy_type or ctx.get("policy_type")
+        policy_ids = request.policy_document_ids or ctx.get("policy_document_ids")
+        if policy_ids:
+            state.matter.policy_document_ids = [str(doc_id) for doc_id in policy_ids]
 
     def capture_matter_from_response(
         self,
@@ -98,6 +101,12 @@ class SessionService:
         report = response.artifacts.get("report")
         if isinstance(report, dict):
             state.matter.last_review_report = report
+        policy_ids = response.artifacts.get("policy_document_ids")
+        if policy_ids:
+            state.matter.policy_document_ids = [str(doc_id) for doc_id in policy_ids]
+        contract_id = response.artifacts.get("contract_document_id")
+        if contract_id:
+            state.matter.contract_document_id = str(contract_id)
 
     def merge_matter_into_request(self, request: AgentRequest) -> AgentRequest:
         """Fill missing review fields from matter — agents unchanged; orchestrator only."""
@@ -124,6 +133,8 @@ class SessionService:
             updates["contract_type"] = matter.contract_type
         if not request.policy_type and matter.policy_type:
             updates["policy_type"] = matter.policy_type
+        if not request.policy_document_ids and matter.policy_document_ids:
+            updates["policy_document_ids"] = matter.policy_document_ids
 
         if not updates:
             return request

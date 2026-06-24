@@ -18,12 +18,19 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "benchmark: live LLM benchmark (nightly)")
 
 
+def _database_url() -> str:
+    return os.environ.get(
+        "TEST_DATABASE_URL",
+        os.environ.get(
+            "DATABASE_URL",
+            "postgresql://legalai:legalai@localhost:5435/legalai_test",
+        ),
+    )
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _database_url_for_tests():
-    os.environ.setdefault(
-        "DATABASE_URL",
-        "postgresql://legalai:legalai@localhost:5435/legalai",
-    )
+    os.environ["DATABASE_URL"] = _database_url()
     os.environ.setdefault("DOCUMENT_STORE_BACKEND", "pgvector")
     os.environ.setdefault("RERANKER_BACKEND", "lexical")
     from document_core.config import get_settings as get_core_settings
@@ -59,7 +66,7 @@ def pg_document_store(pg_engine, database_url):
 
 @pytest.fixture(scope="session")
 def database_url() -> str:
-    return os.environ["DATABASE_URL"]
+    return _database_url()
 
 
 @pytest.fixture(scope="session")
@@ -81,7 +88,7 @@ def pg_engine(database_url: str):
 
 @pytest.fixture(autouse=True)
 def review_settings_defaults(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("REVIEW_POLICY_SCOPE", "discovered")
+    monkeypatch.setenv("REVIEW_POLICY_SCOPE", "request")
     monkeypatch.setenv("GUARD_PASS_ENABLED", "false")
     from review_agent.config import get_settings
     from review_agent.models import llm_gateway

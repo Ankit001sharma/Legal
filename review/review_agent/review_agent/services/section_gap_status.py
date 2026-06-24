@@ -18,17 +18,24 @@ ReviewOutcome = Literal[
 ]
 
 _BOILERPLATE_TITLE = re.compile(
-    r"^(definitions?|interpretation|notices?|notice provisions?|entire agreement|"
-    r"counterparts?|signatures?|execution|recitals?|preamble|general provisions?|"
-    r"boilerplate|severability|headings?)\b",
+    r"^(parties|party|effective date|purpose|background|recitals?|preamble|"
+    r"definitions?|interpretation|notices?|notice provisions?|entire agreement|"
+    r"counterparts?|signatures?|execution|general provisions?|"
+    r"boilerplate|severability|headings?|amendments?|waivers?|"
+    r"relationship of (the )?parties)\b",
     re.IGNORECASE,
 )
 
 
 def is_boilerplate_section(section: IndexedChunk) -> bool:
-    """Title-level boilerplate (definitions, notices, counterparts)."""
+    """Title-level boilerplate (parties, purpose, definitions, notices, counterparts)."""
     title = (section.title or section.section_id or "").strip()
     return bool(title and _BOILERPLATE_TITLE.search(title))
+
+
+def is_non_substantive_section(section: IndexedChunk) -> bool:
+    """Alias for classify/compare skip gate (Phase 22 P8)."""
+    return is_boilerplate_section(section)
 
 
 def _rationale_suffix(

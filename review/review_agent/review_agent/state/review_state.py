@@ -11,12 +11,23 @@ from document_core.schemas.chunk import IngestResult, IndexedChunk
 from document_core.schemas.compliance import ComplianceFinding, ReviewReport
 
 
+def merge_warnings(existing: list[str], new: list[str]) -> list[str]:
+    if not new:
+        return existing
+    seen = set(existing)
+    merged = list(existing)
+    for item in new:
+        if item not in seen:
+            seen.add(item)
+            merged.append(item)
+    return merged
+
+
 class ReviewState(TypedDict, total=False):
     tenant_id: str
-    contract_text: str
     contract_title: str
-    contract_document_id: str | None
-    policy_texts: list[dict[str, Any]]
+    contract_document_id: str
+    contract_text: str | None
     contract_type: str | None
     policy_type: str | None
 
@@ -28,9 +39,8 @@ class ReviewState(TypedDict, total=False):
     discovered_policies: list[dict[str, Any]]
     discovered_policy_document_ids: list[str]
     discovery_warnings: list[str]
-    policy_refs: list[str]
-    fetched_policy_refs: list[str]
-    policy_ref_by_document_id: dict[str, str]
+
+    section_context_by_id: dict[str, dict[str, Any]]
 
     section_retrieval_by_id: dict[str, dict[str, Any]]
     section_review_sections: list[dict[str, Any]]
@@ -48,7 +58,8 @@ class ReviewState(TypedDict, total=False):
 
     findings: list[ComplianceFinding]
     grounded_findings: list[ComplianceFinding]
-    warnings: Annotated[list[str], operator.add]
+    warnings: Annotated[list[str], merge_warnings]
+    failed_sections: Annotated[list[dict[str, Any]], operator.add]
     report: ReviewReport
 
     thread_id: str

@@ -1,17 +1,20 @@
 {
   "tenant_id": "realworld-public",
   "policy_ref": "public-google-cloud-liability-2026",
-  "title": "Google Cloud Platform Agreement — Limitation on Amount of Liability (Public)",
+  "title": "Google Cloud Platform Agreement \u2014 Limitation on Amount of Liability (Public)",
   "policy_type": "nda",
-  "applies_to_contract_types": ["nda", "saas", "vendor"],
-  "categories": ["liability"],
+  "categories": [
+    "liability"
+  ],
   "metadata": {
     "source": "public-web",
     "source_url": "https://cloud.google.com/terms",
     "source_company": "Google LLC",
     "source_document": "Google Cloud Platform Agreement",
-    "extracted_section": "Section 12.2 — Limitation on Amount of Liability",
-    "categories": ["liability"],
+    "extracted_section": "Section 12.2 \u2014 Limitation on Amount of Liability",
+    "categories": [
+      "liability"
+    ],
     "review_guidance": "Align liability caps with fees paid in the prior 12 months for paid services; fixed low caps are disfavored for enterprise vendor deals.",
     "preferred_position": "Each party's total aggregate Liability is limited to the Fees Customer paid for such Services during the 12 month period before the event giving rise to Liability."
   },

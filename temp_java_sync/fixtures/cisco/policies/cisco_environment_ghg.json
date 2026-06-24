@@ -1,15 +1,20 @@
 {
   "tenant_id": "cisco-beta",
   "policy_ref": "public-cisco-environment-ghg-2026",
-  "title": "Cisco Supplier Guide — Environment & GHG",
+  "title": "Cisco Supplier Guide \u2014 Environment & GHG",
   "policy_type": "vendor",
-  "applies_to_contract_types": ["vendor", "supplier", "msa"],
-  "categories": ["environment", "sustainability"],
+  "categories": [
+    "environment",
+    "sustainability"
+  ],
   "metadata": {
     "source": "public-web",
     "source_company": "Cisco Systems, Inc.",
-    "source_document": "Cisco Supplier Guide — Environment (Jan 2026)",
-    "categories": ["environment", "sustainability"],
+    "source_document": "Cisco Supplier Guide \u2014 Environment (Jan 2026)",
+    "categories": [
+      "environment",
+      "sustainability"
+    ],
     "review_guidance": "Suppliers must publish a public absolute GHG emissions reduction target and report emissions via CDP annually with third-party verification.",
     "preferred_position": "Publish a public absolute greenhouse gas (GHG) emissions reduction target and report emissions data via CDP annually, including Scope 1, 2, and significant Scope 3 categories."
   },

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync only — mimics Java background worker (register + structured ingest)."""
+"""Sync fixtures to document-mcp only (writes outputs/sync_result.json)."""
 
 from __future__ import annotations
 
@@ -12,32 +12,24 @@ from bootstrap_env import load_env, setup_pythonpath
 load_env()
 setup_pythonpath()
 
-from java_sync_stub.sync_client import JavaSyncStub  # noqa: E402
 from review_agent.clients.document_client import DocumentMCPClient  # noqa: E402
+from sync_service import save_sync_result, sync_fixture_bundle  # noqa: E402
 
 
 async def main() -> int:
     import os
 
-    base_url = os.environ.get("DOCUMENT_SERVER_URL", "http://localhost:8003")
+    root = load_env()
     tenant = os.environ.get("E2E_TENANT_ID", "e2e-demo")
+    base_url = os.environ.get("DOCUMENT_SERVER_URL", "http://localhost:8003")
     client = DocumentMCPClient(base_url)
-    stub = JavaSyncStub(client, tenant_id=tenant)
-
-    health = await stub.health_ok()
-    if health.get("db") != "ok":
-        print("ERROR: document-mcp unhealthy:", health, file=sys.stderr)
-        return 1
-
-    result = await stub.sync_all_fixtures()
-    verify = await stub.verify_contract_indexed(result["contract"]["document_id"])
-    result["verify"] = verify
-
-    print(json.dumps(result, indent=2))
-    out_dir = load_env() / "outputs"
-    out_dir.mkdir(exist_ok=True)
-    (out_dir / "sync_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(f"\nWrote {out_dir / 'sync_result.json'}")
+    sync = await sync_fixture_bundle(client, tenant_id=tenant)
+    path = save_sync_result(sync)
+    print(f"Tenant: {tenant}")
+    print(f"Contract: {sync['contract']['document_id']} ({sync['verify']['section_count']} sections)")
+    print(f"Policies: {len(sync['policies'])}")
+    print(f"Wrote {path}")
+    print(json.dumps(sync, indent=2)[:800])
     return 0
 
 
