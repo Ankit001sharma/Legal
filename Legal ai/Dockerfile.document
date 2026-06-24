@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY Legal ai/requirements.document.txt ./requirements.txt
+COPY document_core ./document_core
+COPY review/review_agent ./review/review_agent
+
+RUN pip install --no-cache-dir -e ./document_core -e ./review/review_agent \
+    && pip install --no-cache-dir -r requirements.txt
+
+COPY Legal ai/mcp ./mcp
+
+ENV PYTHONPATH=/app
+
+EXPOSE 8002
+
+CMD ["uvicorn", "mcp.document_server.main:app", "--host", "0.0.0.0", "--port", "8002"]

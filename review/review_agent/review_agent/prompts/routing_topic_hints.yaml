@@ -1,0 +1,35 @@
+# Search-optimized discovery topics for contract routing.
+# Aligned with: review_dimensions.yaml, STANDARD_POLICY_CATEGORIES, and common playbook headings.
+# These are injected into the routing prompt as preferred vocabulary.
+# The routing LLM should use these exact phrases when applicable for better retrieval recall.
+
+topics:
+  # === Core commercial terms (from review_dimensions.yaml) ===
+  - limitation of liability
+  - indemnification
+  - confidentiality
+  - termination
+  - data protection
+
+  # === Governance & compliance ===
+  - governing law and jurisdiction
+  - intellectual property ownership
+  - warranties and representations
+  - assignment and transfer
+
+  # === Financial & operational ===
+  - insurance requirements
+  - payment terms and invoicing
+  - service level agreement
+  - force majeure
+
+  # === Data & privacy ===
+  - data retention and deletion
+  - privacy and personal data
+  - data breach notification
+
+  # === Organizational ===
+  - employment and non-compete
+  - vendor security assessment
+  - procurement and sourcing
+  - AI and automated decision making

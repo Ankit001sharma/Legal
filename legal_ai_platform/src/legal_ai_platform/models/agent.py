@@ -4,18 +4,32 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from legal_ai_platform.models.research import ResearchMode
 
 
-class AgentRequest(BaseModel):
-    """Generic task envelope sent to any agent via the orchestrator."""
+class PolicyInput(BaseModel):
+    """Company policy text for contract compliance review."""
 
-    query: str
+    title: str = "Policy"
+    text: str = Field(..., min_length=1)
+    policy_type: str | None = None
+    applies_to_contract_types: list[str] = Field(default_factory=list)
+
+
+class AgentRequest(BaseModel):
+    """Generic task envelope sent to any agent via the orchestrator.
+
+    All clients use ``POST /query`` on the platform gateway. For contract review,
+    set ``task_type`` to ``review`` (or rely on classifier) and supply
+    ``contract_text`` + ``policies`` (top-level or inside ``context``).
+    """
+
+    query: str = ""
     task_type: str | None = Field(
         default=None,
-        description="Optional explicit task type; if omitted the classifier decides",
+        description="Explicit task type: research, review, drafting, …",
     )
     mode: ResearchMode = Field(
         default=ResearchMode.NORMAL,
@@ -28,6 +42,54 @@ class AgentRequest(BaseModel):
         default=None,
         description="Conversation/session id; reuse to continue a multi-turn exchange",
     )
+
+    # Review agent fields (optional top-level; may also live in context)
+    contract_text: str | None = Field(
+        default=None,
+        description="Plain contract text for compliance review",
+    )
+    contract_document_id: str | None = Field(
+        default=None,
+        description="Pre-synced contract UUID in document-mcp (prod path)",
+    )
+    contract_title: str | None = None
+    policies: list[PolicyInput] | None = None
+    contract_type: str | None = None
+    policy_type: str | None = None
+    policy_document_ids: list[str] | None = None
+    policy_refs: list[str] | None = None
+
+    @field_validator("policies", mode="before")
+    @classmethod
+    def coerce_policies(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise TypeError("policies must be a list")
+        return value
+
+    def effective_context(self) -> dict[str, Any]:
+        """Merge top-level review fields into context for agents."""
+        merged = dict(self.context)
+        if self.contract_text is not None:
+            merged["contract_text"] = self.contract_text
+        if self.contract_document_id is not None:
+            merged["contract_document_id"] = self.contract_document_id
+        if self.contract_title is not None:
+            merged["contract_title"] = self.contract_title
+        if self.policies is not None:
+            merged["policies"] = [
+                p.model_dump() if isinstance(p, PolicyInput) else p for p in self.policies
+            ]
+        if self.contract_type is not None:
+            merged["contract_type"] = self.contract_type
+        if self.policy_type is not None:
+            merged["policy_type"] = self.policy_type
+        if self.policy_document_ids is not None:
+            merged["policy_document_ids"] = self.policy_document_ids
+        if self.policy_refs is not None:
+            merged["policy_refs"] = self.policy_refs
+        return merged
 
 
 class AgentResponse(BaseModel):

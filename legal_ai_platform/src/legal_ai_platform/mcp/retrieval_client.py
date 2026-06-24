@@ -147,3 +147,21 @@ class RetrievalMCPClient(BaseMCPClient):
             stub_reason=data.get("stub_reason"),
             graph_time_ms=data.get("graph_time_ms", 0),
         )
+
+    async def save_memory(
+        self,
+        title: str,
+        content: str,
+        hook: str = "",
+    ) -> dict[str, Any]:
+        """Persist a durable legal fact to long-term memory (shared with research agent)."""
+        payload = {"title": title, "content": content, "hook": hook}
+        return await self._post("/tools/memory/save", payload)
+
+    async def search_memory(self, query: str) -> list[dict[str, Any]]:
+        """Search long-term memory for prior research or review sessions."""
+        data = await self._post("/tools/memory/search", {"query": query})
+        return [
+            {"name": item.get("name", ""), "content": item.get("content", "")}
+            for item in data.get("results", [])
+        ]

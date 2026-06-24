@@ -3,10 +3,10 @@
 import pytest
 
 from legal_ai_platform.agents.base.base_agent import BaseAgent
-from legal_ai_platform.models.agent import AgentRequest, AgentResponse
+from legal_ai_platform.models.agent import AgentRequest, AgentResponse, PolicyInput
 from legal_ai_platform.observability.hooks import HookRegistry
 from legal_ai_platform.orchestration.classifier import TaskClassifier
-from legal_ai_platform.orchestration.orchestrator import AgentNotFoundError, QueryOrchestrator
+from legal_ai_platform.orchestration.orchestrator import AgentNotFoundError, QueryOrchestrator, ReviewPayloadError
 from legal_ai_platform.orchestration.registry import AgentRegistry
 
 
@@ -18,6 +18,18 @@ class _StubResearchAgent(BaseAgent):
             agent=self.agent_type,
             task_type="research",
             output=f"Report for: {request.query}",
+        )
+
+
+class _StubReviewAgent(BaseAgent):
+    agent_type = "review"
+
+    async def execute(self, request: AgentRequest) -> AgentResponse:
+        return AgentResponse(
+            agent=self.agent_type,
+            task_type="review",
+            output="review ok",
+            success=True,
         )
 
 
@@ -37,25 +49,54 @@ async def test_orchestrator_routes_to_registered_agent():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_falls_back_to_research_when_specialized_agent_missing():
+async def test_orchestrator_routes_review_intent_to_review_agent():
     registry = AgentRegistry()
     registry.register("research", _StubResearchAgent())
+    registry.register("review", _StubReviewAgent())
     orchestrator = QueryOrchestrator(registry=registry, classifier=TaskClassifier())
-    response = await orchestrator.handle(AgentRequest(query="Review this NDA contract"))
-    assert response.success is True
-    assert response.agent == "research"
-    assert "NDA contract" in response.output
+    response = await orchestrator.handle(
+        AgentRequest(
+            query="Review this NDA",
+            contract_text="NDA body",
+            policies=[PolicyInput(title="P", text="Policy body")],
+        )
+    )
+    assert response.agent == "review"
+    assert response.task_type == "review"
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_raises_when_explicit_task_type_missing():
+async def test_orchestrator_raises_when_agent_not_registered():
     registry = AgentRegistry()
     registry.register("research", _StubResearchAgent())
     orchestrator = QueryOrchestrator(registry=registry, classifier=TaskClassifier())
     with pytest.raises(AgentNotFoundError):
-        await orchestrator.handle(
-            AgentRequest(query="Review this NDA contract", task_type="contract")
+        await orchestrator.handle(AgentRequest(query="Draft a legal notice for breach"))
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_contract_alias_maps_to_review():
+    registry = AgentRegistry()
+    registry.register("review", _StubReviewAgent())
+    orchestrator = QueryOrchestrator(registry=registry, classifier=TaskClassifier())
+    response = await orchestrator.handle(
+        AgentRequest(
+            query="check",
+            task_type="contract",
+            contract_text="Contract body",
+            policies=[PolicyInput(title="P", text="Policy")],
         )
+    )
+    assert response.agent == "review"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_review_validation():
+    registry = AgentRegistry()
+    registry.register("review", _StubReviewAgent())
+    orchestrator = QueryOrchestrator(registry=registry, classifier=TaskClassifier())
+    with pytest.raises(ReviewPayloadError):
+        await orchestrator.handle(AgentRequest(query="review only", task_type="review"))
 
 
 @pytest.mark.asyncio
