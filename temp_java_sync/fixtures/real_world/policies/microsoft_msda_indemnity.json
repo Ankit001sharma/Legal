@@ -1,0 +1,30 @@
+{
+  "tenant_id": "realworld-public",
+  "policy_ref": "public-microsoft-msda-indemnity-2026",
+  "title": "Microsoft Developer Agreement \u2014 Defense of Claims (Public)",
+  "policy_type": "nda",
+  "categories": [
+    "indemnity",
+    "indemnification"
+  ],
+  "metadata": {
+    "source": "public-web",
+    "source_url": "https://learn.microsoft.com/en-us/legal/mdsa",
+    "source_company": "Microsoft Corporation",
+    "source_document": "Microsoft Developer Agreement (MDSA)",
+    "extracted_section": "Section 7 \u2014 Defense of claims",
+    "categories": [
+      "indemnity",
+      "indemnification"
+    ],
+    "review_guidance": "Vendor NDAs should provide mutual defense/indemnification: each party defends the other against qualifying third-party claims, with notice, cooperation, and control of defense.",
+    "preferred_position": "Each party will defend the other against third-party IP infringement claims (Microsoft) and misuse/violation claims arising from the other party's conduct (Customer)."
+  },
+  "sections": [
+    {
+      "section_id": "7",
+      "title": "Defense of claims",
+      "text": "Defense. We will defend you against any claims made by an unaffiliated third-party that the Services or Software infringe its patent, copyright or trademark or makes unlawful use of its trade secret. You will defend us against any claims made by an unaffiliated third-party arising from (1) your misuse or your end user's misuse of the Services, Microsoft Content, or Microsoft Software; (2) your violation or your end user's violation of this Agreement; (3) any Content or data routed into or used with the Services, those acting on your behalf, or your end users. Obligations. Each party must notify the other promptly of a claim under this Section 7. The party seeking protection must (1) give the other sole control over the defense and settlement of the claim; and (2) give reasonable help in defending the claim."
+    }
+  ]
+}

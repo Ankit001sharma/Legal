@@ -10,12 +10,32 @@ def test_default_is_research():
 
 def test_explicit_task_type_overrides():
     classifier = TaskClassifier()
-    assert classifier.classify("anything", explicit_task_type="contract") == "contract"
+    assert classifier.classify("anything", explicit_task_type="contract") == "review"
 
 
-def test_contract_keyword():
+def test_contract_alias_normalizes_to_review():
     classifier = TaskClassifier()
-    assert classifier.classify("Review this NDA contract clause") == "contract"
+    assert classifier.normalize_task_type("contract") == "review"
+    assert classifier.normalize_task_type("compliance") == "review"
+
+
+def test_review_keyword():
+    classifier = TaskClassifier()
+    assert classifier.classify("Review this NDA contract clause") == "review"
+
+
+def test_review_from_context():
+    classifier = TaskClassifier()
+    assert (
+        classifier.classify(
+            "",
+            context={
+                "contract_document_id": "00000000-0000-4000-8000-000000000001",
+                "policy_document_ids": ["00000000-0000-4000-8000-000000000002"],
+            },
+        )
+        == "review"
+    )
 
 
 def test_drafting_keyword():

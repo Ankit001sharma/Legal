@@ -32,6 +32,11 @@ from deep_research_from_scratch.memory_tools import (
     load_memory_prompt,
     record_transcript,
 )
+from deep_research_from_scratch.platform_session_bridge import (
+    format_platform_session_context,
+    get_platform_session,
+    platform_owns_session,
+)
 from deep_research_from_scratch.model_config import get_chat_model, invoke_with_retry
 from deep_research_from_scratch.retrieval_bridge import set_request_context
 from deep_research_from_scratch.prompts import (
@@ -97,20 +102,24 @@ def load_memory(state: AgentState, config: RunnableConfig) -> dict:
 
     backend = get_memory_backend()
 
-    # 1. Long-term memory: index + cross-session facts relevant to this request
-    #    (keyword today, semantic when a vector backend is configured).
+    # 1. Long-term memory: platform prefetches MCP snippets when gateway-owned.
     memory_index = load_memory_prompt()
-    longterm_hits = backend.search_longterm(latest_user_text, k=5) if latest_user_text else []
-    recalled = format_hits(longterm_hits, empty="No long-term memories matched this request.")
-
-    # 2. Bounded conversation context: rolling summary of older turns + recent
-    #    turns verbatim. Stays small regardless of how long the session gets.
-    session_ctx = build_session_context(session_id)
-
-    # 3. Other relevant earlier turns retrieved by the query (catches context
-    #    that fell outside the recent window). Vector-ready via the backend seam.
-    session_hits = backend.search_session(session_id, latest_user_text, k=3) if latest_user_text else []
-    relevant_older = format_hits(session_hits, empty="None.")
+    if platform_owns_session():
+        session_block = get_platform_session() or {}
+        session_ctx = format_platform_session_context(session_block)
+        snippets = (session_block.get("memory_snippets") or "").strip()
+        if snippets:
+            recalled = snippets
+        else:
+            longterm_hits = backend.search_longterm(latest_user_text, k=5) if latest_user_text else []
+            recalled = format_hits(longterm_hits, empty="No long-term memories matched this request.")
+        relevant_older = "None."
+    else:
+        longterm_hits = backend.search_longterm(latest_user_text, k=5) if latest_user_text else []
+        recalled = format_hits(longterm_hits, empty="No long-term memories matched this request.")
+        session_ctx = build_session_context(session_id)
+        session_hits = backend.search_session(session_id, latest_user_text, k=3) if latest_user_text else []
+        relevant_older = format_hits(session_hits, empty="None.")
 
     memory_block = (
         f"{MEMORY_BLOCK_PREFIX}\n"

@@ -1,0 +1,33 @@
+{
+  "tenant_id": "e2e-demo",
+  "contract_ref": "acme-vendor-nda-2026",
+  "title": "Mutual Non-Disclosure Agreement",
+  "contract_type": "nda",
+  "metadata": {
+    "source": "temp-java-sync",
+    "parties": ["Acme Corp", "Vendor Co"],
+    "contract_ref": "acme-vendor-nda-2026"
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Confidential Information",
+      "text": "Confidential Information means all non-public information disclosed by either party in written, oral, or visual form. The receiving party shall protect Confidential Information using the same degree of care it uses for its own confidential information, but no less than reasonable care."
+    },
+    {
+      "section_id": "2",
+      "title": "Term",
+      "text": "This Agreement shall remain in effect for three (3) years from the Effective Date unless terminated earlier by either party upon thirty (30) days written notice."
+    },
+    {
+      "section_id": "3",
+      "title": "Limitation of Liability",
+      "text": "Except for breaches of confidentiality obligations, the total liability of either party under this Agreement shall not exceed one hundred thousand dollars ($100,000). Neither party shall be liable for indirect, incidental, or consequential damages."
+    },
+    {
+      "section_id": "4",
+      "title": "Indemnification",
+      "text": "Vendor shall indemnify, defend, and hold harmless Customer from third-party claims arising from Vendor's gross negligence, willful misconduct, or material breach of this Agreement."
+    }
+  ]
+}

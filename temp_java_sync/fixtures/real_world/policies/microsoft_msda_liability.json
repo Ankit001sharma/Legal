@@ -1,0 +1,28 @@
+{
+  "tenant_id": "realworld-public",
+  "policy_ref": "public-microsoft-msda-liability-2026",
+  "title": "Microsoft Developer Agreement \u2014 Limitation of Liability (Public)",
+  "policy_type": "nda",
+  "categories": [
+    "liability"
+  ],
+  "metadata": {
+    "source": "public-web",
+    "source_url": "https://learn.microsoft.com/en-us/legal/mdsa",
+    "source_company": "Microsoft Corporation",
+    "source_document": "Microsoft Developer Agreement (MDSA)",
+    "extracted_section": "Section 8 \u2014 Limitation of liability",
+    "categories": [
+      "liability"
+    ],
+    "review_guidance": "Vendor agreements should cap direct liability at fees paid in the 12 months before the claim (not a fixed dollar cap), exclude indirect/consequential damages, and carve out indemnity, confidentiality, and IP breaches from the cap.",
+    "preferred_position": "Aggregate liability limited to direct damages up to amounts paid during the 12 months before the liability arose."
+  },
+  "sections": [
+    {
+      "section_id": "8",
+      "title": "Limitation of liability",
+      "text": "Limitation. The aggregate liability of each party under this Agreement is limited to direct damages up to the amount paid under this Agreement for the Developer Services giving rise to that liability during the 12 months before the liability arose, or for Services provided free of charge, Five Hundred United States dollars ($500.00 USD). EXCLUSION. NEITHER PARTY, NOR ITS SUPPLIERS WILL BE LIABLE FOR LOSS OF REVENUE, LOST PROFITS, OR INDIRECT, SPECIAL, INCIDENTAL, CONSEQUENTIAL, PUNITIVE, OR EXEMPLARY DAMAGES, EVEN IF THE PARTY KNEW THEY WERE POSSIBLE. Exceptions to Limitations. The limits of liability in this Section 8 apply to the fullest extent permitted by applicable law, but do not apply to: (1) the parties' obligations under Section 7; or (2) breach of Sections 3.2 - 3.4 or violation of the other's intellectual property rights."
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+Security Practices
+Last updated: 17th July, 2025
+
+1. Introduction
+This Security Practices Policy is established by miniOrange to set forth guidelines, procedures, and responsibilities relating to the protection of the Company's software, systems, intellectual property, and data.
+
+2. Definitions
+Sensitive Data means any data protected by legal or regulatory requirements, including personal data, financial information, and proprietary business data.
+Employee means any individual employed by the Company.
+Third-party vendors means external entities engaged by the Company.
+Incident means any event, suspected event, or actual breach of security, confidentiality, or integrity.
+
+3. Platform
+The miniOrange platform provides secure foundation for cloud applications. Communications are secure and verified. Additional security measures prevent XSS, forgery requests, and SQL injections.
+
+4. Domain Access
+All access uses HTTPS. Customers assigned own domains and sub-domains. Strong encryption for sensitive customer data including SAML keys. Application-level encryption using AES-256 with customer-exclusive symmetric keys.
+
+5. Customer data
+miniOrange validates data on every request. User/customer relationship revalidated on every request. Encryption at rest and in transit. Amazon RDS encryption for data-at-rest.
+
+6. Data Encryption Policies
+miniOrange uses Amazon KMS for symmetric encryption. Uses RSA, DSA, TRIPLE-DES, AES, and HMAC. Passwords stored using salted bcrypt with high rounds. All sensitive data at rest encrypted using AES-256; data in transit secured through TLS 1.2 or higher.
+
+7. Physical Security Measures
+Visitor access controlled. Fire suppression, climate control, UPS, disaster recovery measures.
+
+8. Employee Termination Procedures
+All access rights revoked immediately upon termination. Company property returned. Data access logs reviewed after departure.
+
+9. Operations
+Technical teams with experience operating on-demand services. AWS partnership for security and scalability.
+
+10. Network
+AWS network protects against DDoS, MITM, IP spoofing, port scanning, packet sniffing.
+
+11. High Availability
+Deployed on AWS behind WAF and load balancer with auto-scaling. 99.99% uptime target. Regular snapshots and daily database backups.
+
+12. Disaster Management
+Public mechanisms for customers to report security/privacy events. Environmental controls and fail-over mechanisms.
+
+13. Secure Development Lifecycle
+Security checkpoints from design through deployment. Annual developer security training.
+
+14. Secure Personnel
+Security controls govern employees and contractors. Production access limited to those who need it.
+
+15. Vulnerability Protection
+Protection against XSS, XSRF, SQL Injection, MitM, DoS, brute-force attacks.
+
+16. Penetration Testing
+Uses tools like Netsparker. Design review, source review, penetration testing. Customers may conduct penetration tests in test environments.
+
+17. Server and physical access
+Servers monitored twice per minute. AWS data centers with strict physical access controls. Multi-factor authentication for administrative access.
+
+18. Compliance and Audits
+Periodic internal and external security audits.
+
+19. Third-Party Vendor Management
+All employees, contractors, and vendors must acknowledge compliance with this Policy.

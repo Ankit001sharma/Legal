@@ -1,0 +1,28 @@
+{
+  "tenant_id": "cisco-beta",
+  "policy_ref": "public-cisco-supplier-code-conduct-2026",
+  "title": "Cisco Supplier Guide \u2014 Code of Conduct (RBA)",
+  "policy_type": "vendor",
+  "categories": [
+    "compliance",
+    "human_rights"
+  ],
+  "metadata": {
+    "source": "public-web",
+    "source_company": "Cisco Systems, Inc.",
+    "source_document": "Cisco Supplier Guide (Jan 2026)",
+    "categories": [
+      "compliance",
+      "human_rights"
+    ],
+    "review_guidance": "Hardware suppliers must achieve RBA Silver recognition (160/200 points, no priority findings), complete SAQs, and share VAP audit reports when selected.",
+    "preferred_position": "Suppliers must achieve and maintain RBA Silver Recognition (score of 160/200 with no Priority findings) and complete RBA Validated Assessment Program audits when selected."
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Supplier Code of Conduct \u2014 Minimum Compliance",
+      "text": "Cisco has adopted the RBA Code of Conduct as the Cisco Supplier Code of Conduct. Cisco requires all suppliers to operate in accordance with the Code. Suppliers are required to achieve RBA Silver recognition (160/200 points and no priority findings) or above at all sites providing parts or building products for Cisco. Suppliers must review and acknowledge the Code during onboarding, provide corporate-level SAQs as part of Cisco's annual risk assessment, and if selected for an audit complete a facility-level SAQ, schedule an RBA Validated Assessment Program (VAP), and share VAP audit reports with Cisco."
+    }
+  ]
+}

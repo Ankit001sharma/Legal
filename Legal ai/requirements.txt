@@ -14,3 +14,8 @@ sentence-transformers>=2.7.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 ddgs>=9.0.0
+pyyaml>=6.0.0
+langgraph>=0.2.0
+langchain-core>=0.3.0
+-e ../document_core
+-e ../review/review_agent

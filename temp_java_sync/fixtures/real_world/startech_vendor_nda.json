@@ -1,0 +1,34 @@
+{
+  "tenant_id": "realworld-public",
+  "contract_ref": "startech-vendor-nda-2026",
+  "title": "Mutual Non-Disclosure Agreement — StarTech / CloudVendor Inc.",
+  "contract_type": "nda",
+  "metadata": {
+    "source": "real-world-beta",
+    "parties": ["StarTech Industries Inc.", "CloudVendor Inc."],
+    "contract_ref": "startech-vendor-2026",
+    "scenario": "Draft vendor NDA for SaaS evaluation — intentionally weaker than Microsoft/Google public enterprise standards"
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Confidential Information",
+      "text": "Confidential Information means non-public business, technical, or financial information disclosed by either party. The receiving party shall use reasonable care to protect Confidential Information and shall not disclose it to third parties except as required by law."
+    },
+    {
+      "section_id": "2",
+      "title": "Term",
+      "text": "This Agreement remains in effect for two (2) years from the Effective Date. Confidentiality obligations survive for one (1) year after termination."
+    },
+    {
+      "section_id": "3",
+      "title": "Limitation of Liability",
+      "text": "Except for willful misconduct, the total cumulative liability of either party under this Agreement shall not exceed fifty thousand dollars ($50,000) in the aggregate. Neither party is liable for any indirect, special, incidental, or consequential damages, including lost profits or loss of data."
+    },
+    {
+      "section_id": "4",
+      "title": "Indemnification",
+      "text": "CloudVendor Inc. shall indemnify, defend, and hold harmless StarTech Industries Inc. from any third-party claims, damages, and expenses arising out of CloudVendor's services, negligence, or breach of this Agreement. StarTech has no indemnification obligations to CloudVendor."
+    }
+  ]
+}

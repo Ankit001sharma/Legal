@@ -34,6 +34,13 @@ services:
       POSTGRES_USER: legalai
       POSTGRES_PASSWORD: legalai
       POSTGRES_DB: legalai
+    command: >
+      postgres
+        -c shared_buffers=256MB
+        -c maintenance_work_mem=128MB
+        -c effective_cache_size=512MB
+        -c work_mem=8MB
+        -c max_connections=100
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -48,6 +55,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   db-migrate:
     build:
@@ -77,7 +88,7 @@ services:
       LOG_LEVEL: INFO
       EXTERNAL_TIMEOUT_SECONDS: 30
       DATABASE_URL: postgresql://legalai:legalai@postgres:5432/legalai
-      EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
+      EMBEDDING_MODEL: nomic-ai/modernbert-embed-base
       SEMANTIC_HYBRID_ALPHA: 0.5
     networks:
       - legalai-internal
@@ -87,6 +98,27 @@ services:
       open-websearch:
         condition: service_healthy
     command: uvicorn mcp.retrieval_server.main:app --host 0.0.0.0 --port 8001
+    restart: unless-stopped
+
+  document-mcp:
+    build:
+      context: ..
+      dockerfile: Legal ai/Dockerfile.document
+    container_name: document-mcp
+    ports:
+      - "8003:8002"
+    environment:
+      LOG_LEVEL: INFO
+      DOCUMENT_STORE_BACKEND: pgvector
+      DATABASE_URL: postgresql://legalai:legalai@postgres:5432/legalai
+      SEARCH_BACKEND: hybrid
+      EMBEDDING_MODEL: nomic-ai/modernbert-embed-base
+    networks:
+      - legalai-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn mcp.document_server.main:app --host 0.0.0.0 --port 8002
     restart: unless-stopped
 
   redis:

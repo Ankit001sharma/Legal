@@ -3,19 +3,26 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
+from legal_ai_platform.config import get_settings
 from legal_ai_platform.models.agent import AgentRequest, AgentResponse
 from legal_ai_platform.observability.events import AgentSelected, Failure, Latency, QueryReceived
 from legal_ai_platform.observability.hooks import HookRegistry
 from legal_ai_platform.orchestration.classifier import TaskClassifier
 from legal_ai_platform.orchestration.registry import AgentRegistry
+from legal_ai_platform.session.service import SessionService
 
 logger = logging.getLogger(__name__)
 
 
 class AgentNotFoundError(Exception):
     """Raised when no agent is registered for the classified task type."""
+
+
+class ReviewPayloadError(ValueError):
+    """Raised when a review request is missing required fields."""
 
 
 class QueryOrchestrator:
@@ -26,47 +33,150 @@ class QueryOrchestrator:
         registry: AgentRegistry,
         classifier: TaskClassifier | None = None,
         hooks: HookRegistry | None = None,
+        session_service: SessionService | None = None,
     ) -> None:
         self.registry = registry
         self.classifier = classifier or TaskClassifier()
         self.hooks = hooks or HookRegistry()
+        self.session_service = session_service
 
     async def handle(self, request: AgentRequest) -> AgentResponse:
-        """Process a user query end-to-end."""
+        """Process a user query end-to-end with unified session memory."""
         started = time.perf_counter()
-        task_type = self.classifier.classify(request.query, request.task_type)
+        session_svc = self.session_service
+
+        thread_id = (
+            session_svc.resolve_thread_id(request.thread_id)
+            if session_svc
+            else (request.thread_id or "")
+        )
+        tenant_id = request.tenant_id or "default"
+
+        session = None
+        if session_svc is not None:
+            session = session_svc.load_or_create(thread_id, tenant_id)
+            session_svc.append_user_turn(session, request.query)
+            session_svc.capture_matter_from_request(session, request)
+
+            effective_context = request.effective_context()
+            task_type_preview = self.classifier.classify(
+                request.query,
+                request.task_type,
+                effective_context,
+            )
+            memory_snippets, memory_hits = await session_svc.prefetch_long_term_memory(
+                session, request.query, task_type_preview
+            )
+            agent_request = session_svc.enrich_request(
+                request,
+                session,
+                memory_snippets=memory_snippets,
+                memory_hits=memory_hits,
+            )
+        else:
+            agent_request = request.model_copy(update={"thread_id": thread_id or request.thread_id})
+
+        effective_context = agent_request.effective_context()
+        task_type = self.classifier.classify(
+            agent_request.query,
+            agent_request.task_type,
+            effective_context,
+        )
 
         self.hooks.emit(
-            QueryReceived(query=request.query, task_type=task_type)
+            QueryReceived(query=agent_request.query, task_type=task_type)
         )
+
+        if task_type == "review":
+            agent_request = self._prepare_review_scope(agent_request)
+            effective_context = agent_request.effective_context()
+            self._validate_review_payload(agent_request, effective_context)
 
         agent = self.registry.get(task_type)
         if agent is None:
-            if request.task_type:
-                self._raise_agent_not_found(task_type)
-            fallback_type = self.classifier.DEFAULT_TASK_TYPE
-            agent = self.registry.get(fallback_type)
-            if agent is None or task_type == fallback_type:
-                self._raise_agent_not_found(task_type)
-            logger.info(
-                "No agent for classified task_type=%s; falling back to %s",
-                task_type,
-                fallback_type,
-            )
-            task_type = fallback_type
+            self._raise_agent_not_found(task_type)
 
         self.hooks.emit(
             AgentSelected(task_type=task_type, agent_type=agent.agent_type)
         )
 
-        response = await agent.execute(request)
+        response = await agent.execute(agent_request)
         response.task_type = task_type
+        response.thread_id = thread_id or response.thread_id
+
+        if session_svc is not None and session is not None:
+            session_svc.append_assistant_turn(
+                session,
+                content=response.output,
+                agent=response.agent,
+                task_type=task_type,
+            )
+            session_svc.capture_matter_from_response(session, response)
+            session_svc.capture_matter_from_request(session, agent_request)
+            memory_artifacts = await session_svc.maybe_persist_long_term_memory(
+                session, response, task_type
+            )
+            if memory_artifacts:
+                response.artifacts = {**response.artifacts, **memory_artifacts}
+            session_svc.update_summary(session)
+            session_svc.persist(session)
 
         latency_ms = (time.perf_counter() - started) * 1000
         self.hooks.emit(
             Latency(operation="orchestrator.handle", latency_ms=latency_ms)
         )
         return response
+
+    @staticmethod
+    def _prepare_review_scope(request: AgentRequest) -> AgentRequest:
+        """Align review_policy_scope env with request policy_source."""
+        if request.policy_source == "session":
+            os.environ["REVIEW_POLICY_SCOPE"] = "request"
+        else:
+            os.environ["REVIEW_POLICY_SCOPE"] = "indexed"
+        return request
+
+    @staticmethod
+    def _validate_review_payload(request: AgentRequest, context: dict) -> None:
+        session_block = context.get("session") or {}
+        matter = session_block.get("matter") or {}
+
+        contract_text = (
+            request.contract_text
+            or context.get("contract_text")
+            or matter.get("contract_text")
+            or ""
+        )
+        if isinstance(contract_text, str):
+            contract_text = contract_text.strip()
+        else:
+            contract_text = str(contract_text or "").strip()
+
+        contract_document_id = (
+            request.contract_document_id
+            or context.get("contract_document_id")
+            or matter.get("contract_document_id")
+            or ""
+        )
+        if isinstance(contract_document_id, str):
+            contract_document_id = contract_document_id.strip()
+        else:
+            contract_document_id = str(contract_document_id or "").strip()
+
+        if not contract_document_id and not contract_text:
+            raise ReviewPayloadError("Review requires contract_text or contract_document_id")
+
+        policy_source = request.policy_source or context.get("policy_source") or "indexed"
+        policy_document_ids = (
+            request.policy_document_ids
+            or context.get("policy_document_ids")
+            or matter.get("policy_document_ids")
+            or []
+        )
+        if policy_source == "session" and not policy_document_ids:
+            raise ReviewPayloadError(
+                "Review requires policy_document_ids when policy_source=session"
+            )
 
     def _raise_agent_not_found(self, task_type: str) -> None:
         self.hooks.emit(

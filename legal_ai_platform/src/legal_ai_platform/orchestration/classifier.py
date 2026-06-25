@@ -3,21 +3,40 @@
 from __future__ import annotations
 
 import re
+from typing import Any
+
+# task_type "contract" is an alias for the review agent (compliance review).
+TASK_TYPE_ALIASES: dict[str, str] = {
+    "contract": "review",
+    "compliance": "review",
+}
 
 
 class TaskClassifier:
     """Classify user queries into task types.
 
-    Current implementation uses keyword rules. Structured for future LLM-based
-    classification without changing the orchestrator interface.
+    Review routing triggers when:
+      - ``task_type`` is review / contract / compliance
+      - ``context`` includes contract_document_id + policy_document_ids
+      - Query matches review intent patterns
+
+    Structured for future LLM-based classification without changing the orchestrator.
     """
 
     _RULES: list[tuple[str, re.Pattern[str]]] = [
-        ("contract", re.compile(r"\b(contract|agreement|clause|NDA|MSA)\b", re.I)),
+        (
+            "review",
+            re.compile(
+                r"\b("
+                r"review|compliance check|check compliance|compare.+policy|"
+                r"against (our |the )?policy|policy compliance|non[- ]compliant"
+                r")\b",
+                re.I,
+            ),
+        ),
         ("drafting", re.compile(r"\b(draft|write|prepare|generate)\b.*\b(notice|petition|letter|memo)\b", re.I)),
         ("summary", re.compile(r"\b(summarize|summary|summarise)\b", re.I)),
         ("litigation", re.compile(r"\b(litigation|lawsuit|comparable cases|risk)\b", re.I)),
-        ("compliance", re.compile(r"\b(compliance|regulatory|regulation)\b", re.I)),
         ("property", re.compile(r"\b(property|real estate|land|lease)\b", re.I)),
         ("ip", re.compile(r"\b(patent|trademark|copyright|intellectual property|IP)\b", re.I)),
         ("translation", re.compile(r"\b(translate|translation)\b", re.I)),
@@ -25,16 +44,34 @@ class TaskClassifier:
 
     DEFAULT_TASK_TYPE = "research"
 
-    def classify(self, query: str, explicit_task_type: str | None = None) -> str:
-        """Return the task type for a query.
-
-        If ``explicit_task_type`` is provided it takes precedence.
-        """
+    def classify(
+        self,
+        query: str,
+        explicit_task_type: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> str:
+        """Return the task type for a query."""
         if explicit_task_type:
-            return explicit_task_type
+            return self.normalize_task_type(explicit_task_type)
+
+        ctx = context or {}
+        if ctx.get("contract_document_id") and ctx.get("policy_document_ids"):
+            return "review"
+
+        has_contract = bool(ctx.get("contract_text") or ctx.get("contract_document_id"))
+        if has_contract:
+            for task_type, pattern in self._RULES:
+                if task_type == "review" and pattern.search(query):
+                    return "review"
 
         for task_type, pattern in self._RULES:
             if pattern.search(query):
                 return task_type
 
         return self.DEFAULT_TASK_TYPE
+
+    @staticmethod
+    def normalize_task_type(task_type: str) -> str:
+        """Map legacy aliases (e.g. contract) to registered agent task types."""
+        normalized = task_type.strip().lower()
+        return TASK_TYPE_ALIASES.get(normalized, normalized)

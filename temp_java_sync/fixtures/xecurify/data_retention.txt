@@ -1,0 +1,46 @@
+Data Retention
+Last updated: September 16, 2025
+
+Purpose
+This Data Retention Policy will set out for which data is to be retained, the criteria for establishing and reviewing such period(s), and when and how it is to be deleted or otherwise disposed of.
+
+The purpose of this Policy is to ensure that necessary records and documents are adequately protected and maintained, and to ensure that records that are no longer needed by miniOrange or are of no value are discarded at the proper time.
+
+In order to provide customers with secure choices, what data we store, how we process the data, and how the data is purged are mentioned in this policy, ensuring compliance with applicable EU (GDPR), DPDPA, and other global privacy regulations.
+
+miniOrange aims to retain only the data necessary to effectively perform its services or activities and fulfill its mission.
+
+Scope
+This policy covers all data collected by miniOrange and stored on miniOrange-owned systems and media, regardless of location.
+
+Data Category | Retention Period | Notes or Legal Basis
+Account & contact info | Lifetime of customer relationship + 3 years | GDPR storage limitation; DPDPA Section 8
+Usage logs/app data | 3 months to 2 years (per contract) | Minimized per operational/security need
+Transaction records | 7 years | Tax, accounting, and compliance laws
+Support tickets/emails | 2 years after resolution | Business need: GDPR/DPDPA
+Consent registrations | 7 years post-withdrawal (DPDPA) | DPDPA requirement
+Contractual documents | 7 years post-contract end | Business/legal need
+Backup images | 2 years or as contractually agreed | Secure, restricted access
+Marketing communications | Until opt-out or withdrawal + 1 year | GDPR/DPDPA; business need
+
+Data Destruction
+When the retention period for the data as outlined above expires, miniOrange will actively destroy the data covered by this policy. In rare circumstances, a litigation hold may be issued by legal counsel prohibiting the destruction of certain documents.
+
+Method of Data Deletion and Disposal
+Once the applicable retention period expires, customer data will be securely deleted from all production and backup systems (physical: shredding; electronic: secure erasure/cryptographic wiping).
+
+Deletion events are logged for audit and regulatory review purposes.
+
+a. Secure Deletion: Upon termination of the Agreement, completion of the processing purpose, or upon written request from the Disclosing Party, miniOrange shall securely delete or destroy all confidential information and personal data—including all electronic and physical copies—in its possession or control.
+
+b. Physical Data Disposal: All physical records containing confidential or personal information shall be destroyed using cross-cut shredding, incineration, or other appropriate methods.
+
+c. Data in Backups and Archives: Backup copies and archived data must also be securely deleted according to documented retention schedules, and log files of such actions shall be maintained for audit purposes.
+
+d. Data Principal Rights: Customers (data principals) have the right to access, rectify, restrict, or request deletion of their personal data at any time, except where retention is otherwise required by law.
+
+e. Legal Hold and Exceptions: If data is subject to ongoing litigation, audit, or investigation, regular deletion is paused for relevant data until given clearance by the Legal/Compliance team.
+
+f. Cross-Border Transfers: If customer data is transferred internationally, appropriate safeguards (e.g., Standard Contractual Clauses, government approvals under DPDPA) are implemented and documented, and customers are informed beforehand.
+
+Contact: info@xecurify.com | +1 978 658 9387 | https://www.miniorange.com/contact

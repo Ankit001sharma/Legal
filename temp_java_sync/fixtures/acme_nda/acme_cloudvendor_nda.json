@@ -1,0 +1,62 @@
+{
+  "tenant_id": "acme-nda-clean",
+  "contract_ref": "acme-cloudvendor-nda-2026",
+  "title": "Mutual Non-Disclosure Agreement — Acme Corp / CloudVendor Inc.",
+  "contract_type": "nda",
+  "metadata": {
+    "source": "acme-nda-assessment",
+    "parties": ["Acme Corp", "CloudVendor Inc."]
+  },
+  "sections": [
+    {
+      "section_id": "1",
+      "title": "Parties and Effective Date",
+      "text": "This Mutual Non-Disclosure Agreement (\"Agreement\") is entered into as of June 22, 2026 (\"Effective Date\") by and between Acme Corp, a Delaware corporation (\"Acme\"), and CloudVendor Inc., a California corporation (\"Vendor\"). Acme and Vendor may each be referred to as a \"Party\" and collectively as the \"Parties.\""
+    },
+    {
+      "section_id": "2",
+      "title": "Purpose",
+      "text": "The Parties wish to explore a potential business relationship involving Vendor's cloud software and related services (the \"Purpose\"). In connection with the Purpose, each Party may disclose Confidential Information to the other."
+    },
+    {
+      "section_id": "3",
+      "title": "Confidential Information",
+      "text": "\"Confidential Information\" means all non-public information disclosed by one Party (\"Disclosing Party\") to the other Party (\"Receiving Party\"), whether orally, visually, in writing, or in electronic form, that is designated as confidential or that reasonably should be understood to be confidential given the nature of the information and the circumstances of disclosure. Confidential Information includes business plans, product roadmaps, technical data, source code, pricing, customer lists, and security documentation. Confidential Information does not include information that: (a) is or becomes publicly available through no fault of the Receiving Party; (b) was rightfully known to the Receiving Party without restriction before disclosure; (c) is independently developed by the Receiving Party without use of Confidential Information; or (d) is rightfully received from a third party without breach of any obligation of confidentiality."
+    },
+    {
+      "section_id": "4",
+      "title": "Protection and Use of Confidential Information",
+      "text": "During the term of this Agreement and for five (5) years thereafter, each Receiving Party shall hold the Disclosing Party's Confidential Information in strictest confidence and shall not use or disclose it except as permitted under this Agreement. The Receiving Party shall protect Confidential Information using no less than reasonable care and industry-standard safeguards. The Receiving Party may disclose Confidential Information only to its Affiliates, employees, officers, directors, and contractors who have a need to know for the Purpose and who are bound by confidentiality obligations at least as protective as this Agreement. The Receiving Party remains responsible for any breach by such recipients. The Receiving Party may disclose Confidential Information if required by law, regulation, or court order, provided that (to the extent legally permitted) the Receiving Party gives the Disclosing Party prompt notice and reasonable cooperation to seek protective treatment."
+    },
+    {
+      "section_id": "5",
+      "title": "Term and Termination",
+      "text": "This Agreement begins on the Effective Date and continues for three (3) years unless earlier terminated by either Party upon thirty (30) days' written notice. Sections 3 through 10 survive termination or expiration."
+    },
+    {
+      "section_id": "6",
+      "title": "Limitation of Liability",
+      "text": "Except as set forth in Section 7 (Indemnification) and for breaches of Section 4 (Confidential Information) or violation of the other Party's intellectual property rights, each Party's aggregate liability under this Agreement shall be limited to direct damages and shall not exceed the total fees paid or payable by Acme to Vendor under this Agreement during the twelve (12) months immediately preceding the event giving rise to liability; if no fees were paid, the cap shall be Five Hundred United States Dollars ($500.00 USD). NEITHER PARTY SHALL BE LIABLE FOR ANY LOSS OF REVENUE, LOST PROFITS, OR INDIRECT, SPECIAL, INCIDENTAL, CONSEQUENTIAL, PUNITIVE, OR EXEMPLARY DAMAGES, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES."
+    },
+    {
+      "section_id": "7",
+      "title": "Defense and Indemnification",
+      "text": "Vendor shall defend, indemnify, and hold harmless Acme and its Affiliates from any third-party claim alleging that Vendor's services or deliverables, as provided to Acme under this Agreement, infringe such third party's patent, copyright, or trademark or unlawfully misappropriate its trade secret. Acme shall defend, indemnify, and hold harmless Vendor and its Affiliates from any third-party claim arising from (a) Acme's misuse of Vendor's services or materials; (b) Acme's breach of this Agreement; or (c) any data, content, or materials provided by Acme or routed into Vendor's systems by or on behalf of Acme. The Party seeking indemnification shall promptly notify the other Party of the claim, allow the indemnifying Party sole control of the defense and settlement (except no settlement admitting fault or imposing obligations on the indemnified Party without consent), and provide reasonable assistance at the indemnifying Party's expense."
+    },
+    {
+      "section_id": "8",
+      "title": "No License; Return of Materials",
+      "text": "No license or other rights in intellectual property are granted by either Party under this Agreement except the limited right to use Confidential Information for the Purpose. Upon request or termination, each Receiving Party shall return or destroy the Disclosing Party's Confidential Information, except copies retained for legal or compliance archives subject to continuing confidentiality obligations."
+    },
+    {
+      "section_id": "9",
+      "title": "Governing Law and Dispute Resolution",
+      "text": "This Agreement is governed by the laws of the State of Delaware, without regard to conflict-of-laws principles. Any dispute arising out of this Agreement shall be resolved exclusively in the state or federal courts located in Wilmington, Delaware, and each Party consents to personal jurisdiction therein."
+    },
+    {
+      "section_id": "10",
+      "title": "General",
+      "text": "This Agreement constitutes the entire agreement of the Parties regarding its subject matter and supersedes all prior or contemporaneous understandings on that subject. This Agreement may be amended only in a written instrument signed by both Parties. Neither Party may assign this Agreement without the other Party's prior written consent, except to an Affiliate or in connection with a merger or sale of substantially all assets. If any provision is held invalid, the remainder remains in effect."
+    }
+  ]
+}
